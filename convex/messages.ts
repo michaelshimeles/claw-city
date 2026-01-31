@@ -8,6 +8,44 @@ import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
 
 /**
+ * Get all agents that have sent or received at least one message
+ */
+export const getAgentsWithMessages = query({
+  args: {},
+  handler: async (ctx) => {
+    const messages = await ctx.db.query("messages").collect();
+
+    // Get unique agent IDs (both senders and recipients)
+    const agentIds = new Set<string>();
+    for (const msg of messages) {
+      agentIds.add(msg.senderId.toString());
+      agentIds.add(msg.recipientId.toString());
+    }
+
+    // If no messages, return empty array
+    if (agentIds.size === 0) {
+      return [];
+    }
+
+    // Fetch agent details
+    const agents = await Promise.all(
+      Array.from(agentIds).map((id) => ctx.db.get(id as Id<"agents">))
+    );
+
+    // Return agent info, filtering out nulls
+    return agents
+      .filter((a) => a !== null)
+      .map((a) => ({
+        _id: a!._id,
+        name: a!.name,
+        status: a!.status,
+        cash: a!.cash,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  },
+});
+
+/**
  * Get all messages for an agent (inbox), with sender info, ordered by timestamp desc
  */
 export const getInbox = query({

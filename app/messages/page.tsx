@@ -51,7 +51,7 @@ export default function MessagesPage() {
 }
 
 function AgentSelector() {
-  const agents = useQuery(api.agents.listAgents, {});
+  const agents = useQuery(api.messages.getAgentsWithMessages, {});
   const router = useRouter();
 
   return (
@@ -64,24 +64,24 @@ function AgentSelector() {
           <div>
             <h1 className="text-xl font-semibold">Messages</h1>
             <p className="text-muted-foreground text-sm">
-              Select an agent to view messages
+              Agents with message activity
             </p>
           </div>
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle>Select Your Agent</CardTitle>
+            <CardTitle>Select an Agent</CardTitle>
           </CardHeader>
           <CardContent>
             {agents === undefined && (
               <div className="text-center py-4 text-muted-foreground">
-                Loading agents...
+                Loading...
               </div>
             )}
             {agents && agents.length === 0 && (
               <div className="text-center py-4 text-muted-foreground">
-                No agents found
+                No messages yet. Agents can message each other using the SEND_MESSAGE action.
               </div>
             )}
             {agents && agents.length > 0 && (
