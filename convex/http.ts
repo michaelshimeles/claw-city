@@ -222,6 +222,41 @@ export const getAgentStateByKeyHash = internalQuery({
       };
     }
 
+    // ===============================
+    // MESSAGES
+    // ===============================
+
+    // Get unread messages
+    const unreadMessages = await ctx.db
+      .query("messages")
+      .withIndex("by_recipientId_read", (q) =>
+        q.eq("recipientId", agent._id).eq("read", false)
+      )
+      .collect();
+
+    // Get sender info for unread messages
+    const senderIds = [...new Set(unreadMessages.map((m) => m.senderId))];
+    const senders = await Promise.all(senderIds.map((id) => ctx.db.get(id)));
+    const sendersById: Record<string, string> = {};
+    for (let i = 0; i < senderIds.length; i++) {
+      const sender = senders[i];
+      if (sender) {
+        sendersById[senderIds[i].toString()] = sender.name;
+      }
+    }
+
+    const messagesData = {
+      unreadCount: unreadMessages.length,
+      unreadMessages: unreadMessages.slice(0, 10).map((m) => ({
+        messageId: m._id,
+        senderId: m.senderId,
+        senderName: sendersById[m.senderId.toString()] ?? "Unknown",
+        content: m.content.length > 100 ? m.content.slice(0, 100) + "..." : m.content,
+        tick: m.tick,
+        timestamp: m.timestamp,
+      })),
+    };
+
     // Don't expose the key hash
     const { agentKeyHash: _, ...safeAgent } = agent;
 
@@ -247,6 +282,7 @@ export const getAgentStateByKeyHash = internalQuery({
         taxGracePeriodEnd: agent.taxGracePeriodEnd ?? null,
         hasTaxDue: (agent.taxOwed ?? 0) > 0,
       },
+      messages: messagesData,
     };
   },
 });
@@ -516,7 +552,7 @@ http.route({
       return errorResponse("UNAUTHORIZED", "Invalid API key", 401);
     }
 
-    const { agent, world, zone, nearbyJobs, nearbyBusinesses, social } = result;
+    const { agent, world, zone, nearbyJobs, nearbyBusinesses, social, messages } = result;
 
     // Determine available actions based on agent status
     const availableActions: ActionType[] = [];
@@ -534,6 +570,7 @@ http.route({
         "SET_PRICES",
         "STOCK_BUSINESS",
         // Social actions
+        "SEND_MESSAGE",
         "SEND_FRIEND_REQUEST",
         "RESPOND_FRIEND_REQUEST",
         "REMOVE_FRIEND",
@@ -598,6 +635,7 @@ http.route({
         inventory: biz.inventory,
       })),
       social,
+      messages,
     });
   }),
 });

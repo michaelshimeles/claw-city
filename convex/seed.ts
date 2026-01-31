@@ -1,4 +1,4 @@
-import { internalMutation } from "./_generated/server";
+import { internalMutation, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
 
@@ -478,6 +478,177 @@ const JOBS_DATA: JobData[] = [
     durationTicks: 2,
     requirements: {},
     staminaCost: 10,
+  },
+];
+
+// ============================================================================
+// VEHICLES SEED DATA
+// ============================================================================
+
+interface VehicleData {
+  zoneSlug: string;
+  type: "motorcycle" | "car" | "sports_car" | "truck" | "van";
+  name: string;
+  condition: number;
+  speedBonus: number;
+  value: number;
+}
+
+const VEHICLES_DATA: VehicleData[] = [
+  // Residential - mostly older cars
+  {
+    zoneSlug: "residential",
+    type: "car",
+    name: "Rusty Sedan",
+    condition: 75,
+    speedBonus: 0.25,
+    value: 800,
+  },
+  {
+    zoneSlug: "residential",
+    type: "car",
+    name: "Family Wagon",
+    condition: 85,
+    speedBonus: 0.28,
+    value: 1000,
+  },
+  {
+    zoneSlug: "residential",
+    type: "motorcycle",
+    name: "Dirt Bike",
+    condition: 90,
+    speedBonus: 0.25,
+    value: 500,
+  },
+
+  // Downtown - fancy cars
+  {
+    zoneSlug: "downtown",
+    type: "sports_car",
+    name: "Executive Roadster",
+    condition: 100,
+    speedBonus: 0.50,
+    value: 3500,
+  },
+  {
+    zoneSlug: "downtown",
+    type: "sports_car",
+    name: "Luxury Coupe",
+    condition: 95,
+    speedBonus: 0.48,
+    value: 3200,
+  },
+  {
+    zoneSlug: "downtown",
+    type: "car",
+    name: "Business Sedan",
+    condition: 90,
+    speedBonus: 0.30,
+    value: 1200,
+  },
+
+  // Market - delivery vehicles
+  {
+    zoneSlug: "market",
+    type: "van",
+    name: "Delivery Van",
+    condition: 80,
+    speedBonus: 0.18,
+    value: 650,
+  },
+  {
+    zoneSlug: "market",
+    type: "truck",
+    name: "Pickup Truck",
+    condition: 85,
+    speedBonus: 0.15,
+    value: 800,
+  },
+  {
+    zoneSlug: "market",
+    type: "motorcycle",
+    name: "Courier Scooter",
+    condition: 90,
+    speedBonus: 0.22,
+    value: 400,
+  },
+
+  // Industrial - work vehicles
+  {
+    zoneSlug: "industrial",
+    type: "truck",
+    name: "Heavy Hauler",
+    condition: 70,
+    speedBonus: 0.12,
+    value: 900,
+  },
+  {
+    zoneSlug: "industrial",
+    type: "truck",
+    name: "Box Truck",
+    condition: 75,
+    speedBonus: 0.14,
+    value: 850,
+  },
+  {
+    zoneSlug: "industrial",
+    type: "van",
+    name: "Work Van",
+    condition: 65,
+    speedBonus: 0.16,
+    value: 600,
+  },
+
+  // Docks - mixed vehicles
+  {
+    zoneSlug: "docks",
+    type: "truck",
+    name: "Cargo Truck",
+    condition: 60,
+    speedBonus: 0.13,
+    value: 750,
+  },
+  {
+    zoneSlug: "docks",
+    type: "van",
+    name: "Smuggler's Van",
+    condition: 80,
+    speedBonus: 0.22,
+    value: 800,
+  },
+  {
+    zoneSlug: "docks",
+    type: "motorcycle",
+    name: "Street Bike",
+    condition: 85,
+    speedBonus: 0.28,
+    value: 550,
+  },
+
+  // Suburbs - family vehicles
+  {
+    zoneSlug: "suburbs",
+    type: "car",
+    name: "Minivan",
+    condition: 90,
+    speedBonus: 0.25,
+    value: 900,
+  },
+  {
+    zoneSlug: "suburbs",
+    type: "car",
+    name: "SUV",
+    condition: 88,
+    speedBonus: 0.28,
+    value: 1100,
+  },
+  {
+    zoneSlug: "suburbs",
+    type: "sports_car",
+    name: "Garage Queen",
+    condition: 100,
+    speedBonus: 0.55,
+    value: 4000,
   },
 ];
 
@@ -1072,6 +1243,51 @@ export const seedBusinesses = internalMutation({
 });
 
 /**
+ * Seed vehicles into the database
+ */
+export const seedVehicles = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    // Check if vehicles already exist
+    const existingVehicles = await ctx.db.query("vehicles").collect();
+    if (existingVehicles.length > 0) {
+      console.log("Vehicles already seeded, skipping...");
+      return { seeded: false, count: existingVehicles.length };
+    }
+
+    // Get all zones to build slug -> ID mapping
+    const zones = await ctx.db.query("zones").collect();
+    const zoneIdBySlug: Record<string, Id<"zones">> = {};
+    for (const zone of zones) {
+      zoneIdBySlug[zone.slug] = zone._id;
+    }
+
+    let count = 0;
+    for (const vehicle of VEHICLES_DATA) {
+      const zoneId = zoneIdBySlug[vehicle.zoneSlug];
+      if (!zoneId) {
+        console.warn(`Skipping vehicle "${vehicle.name}": zone ${vehicle.zoneSlug} not found`);
+        continue;
+      }
+
+      await ctx.db.insert("vehicles", {
+        type: vehicle.type,
+        name: vehicle.name,
+        zoneId,
+        isStolen: false,
+        condition: vehicle.condition,
+        speedBonus: vehicle.speedBonus,
+        value: vehicle.value,
+      });
+      count++;
+    }
+
+    console.log(`Seeded ${count} vehicles`);
+    return { seeded: true, count };
+  },
+});
+
+/**
  * Initialize the world singleton with default configuration
  */
 export const seedWorld = internalMutation({
@@ -1290,6 +1506,45 @@ export const seedAll = internalMutation({
       results.properties = { seeded: false, count: existingProperties.length, reason: "already exists" };
     }
 
+    // 8. Vehicles (depends on zones)
+    const existingVehicles = await ctx.db.query("vehicles").collect();
+    if (existingVehicles.length === 0) {
+      let vehicleCount = 0;
+      for (const vehicle of VEHICLES_DATA) {
+        const zoneId = zoneIdBySlug[vehicle.zoneSlug];
+        if (!zoneId) continue;
+
+        await ctx.db.insert("vehicles", {
+          type: vehicle.type,
+          name: vehicle.name,
+          zoneId,
+          isStolen: false,
+          condition: vehicle.condition,
+          speedBonus: vehicle.speedBonus,
+          value: vehicle.value,
+        });
+        vehicleCount++;
+      }
+      results.vehicles = { seeded: true, count: vehicleCount };
+      console.log(`Seeded ${vehicleCount} vehicles`);
+    } else {
+      results.vehicles = { seeded: false, count: existingVehicles.length, reason: "already exists" };
+    }
+
+    // 9. Government (for tax tracking)
+    const existingGovernment = await ctx.db.query("government").first();
+    if (!existingGovernment) {
+      await ctx.db.insert("government", {
+        totalTaxRevenue: 0,
+        totalSeizedCash: 0,
+        totalSeizedItems: 0,
+      });
+      results.government = { seeded: true };
+      console.log("Government initialized");
+    } else {
+      results.government = { seeded: false, reason: "already exists" };
+    }
+
     console.log("Seed complete!", results);
     return results;
   },
@@ -1319,6 +1574,11 @@ export const clearAllSeedData = internalMutation({
       await ctx.db.delete(j._id);
     }
 
+    const vehicles = await ctx.db.query("vehicles").collect();
+    for (const vehicle of vehicles) {
+      await ctx.db.delete(vehicle._id);
+    }
+
     const zoneEdges = await ctx.db.query("zoneEdges").collect();
     for (const e of zoneEdges) {
       await ctx.db.delete(e._id);
@@ -1343,6 +1603,7 @@ export const clearAllSeedData = internalMutation({
     return {
       deleted: {
         businesses: businesses.length,
+        vehicles: vehicles.length,
         jobs: jobs.length,
         zoneEdges: zoneEdges.length,
         items: items.length,
@@ -1356,8 +1617,6 @@ export const clearAllSeedData = internalMutation({
 // ============================================================================
 // PUBLIC SEED MUTATION (for easy initialization)
 // ============================================================================
-
-import { mutation } from "./_generated/server";
 
 /**
  * Public mutation to seed the database
@@ -1534,6 +1793,43 @@ export const initializeWorld = mutation({
       results.properties = { seeded: true, count: propertyCount };
     } else {
       results.properties = { seeded: false, count: existingProperties.length };
+    }
+
+    // 8. Vehicles (depends on zones)
+    const existingVehicles = await ctx.db.query("vehicles").collect();
+    if (existingVehicles.length === 0) {
+      let vehicleCount = 0;
+      for (const vehicle of VEHICLES_DATA) {
+        const zoneId = zoneIdBySlug[vehicle.zoneSlug];
+        if (!zoneId) continue;
+
+        await ctx.db.insert("vehicles", {
+          type: vehicle.type,
+          name: vehicle.name,
+          zoneId,
+          isStolen: false,
+          condition: vehicle.condition,
+          speedBonus: vehicle.speedBonus,
+          value: vehicle.value,
+        });
+        vehicleCount++;
+      }
+      results.vehicles = { seeded: true, count: vehicleCount };
+    } else {
+      results.vehicles = { seeded: false, count: existingVehicles.length };
+    }
+
+    // 9. Government (for tax tracking)
+    const existingGovernment = await ctx.db.query("government").first();
+    if (!existingGovernment) {
+      await ctx.db.insert("government", {
+        totalTaxRevenue: 0,
+        totalSeizedCash: 0,
+        totalSeizedItems: 0,
+      });
+      results.government = { seeded: true };
+    } else {
+      results.government = { seeded: false, reason: "already exists" };
     }
 
     return results;

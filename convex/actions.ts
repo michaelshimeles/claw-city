@@ -21,6 +21,12 @@ import {
   PropertyType,
   GangRole,
   TAX_DEFAULTS,
+  GTA_DEFAULTS,
+  GambleRiskType,
+  GAMBLE_RISK_TYPES,
+  DisguiseType,
+  DISGUISE_TYPES,
+  VehicleType,
 } from "./lib/constants";
 import { createTickRng } from "./lib/rng";
 
@@ -105,6 +111,18 @@ export type ActionArgs = {
   BETRAY_GANG: Record<string, never>;
   // Tax actions
   PAY_TAX: Record<string, never>;
+  // Messaging
+  SEND_MESSAGE: { targetAgentId: string; content: string };
+  // GTA-like freedom actions
+  ATTEMPT_JAILBREAK: Record<string, never>;
+  BRIBE_COPS: Record<string, never>;
+  ATTACK_AGENT: { targetAgentId: string };
+  PLACE_BOUNTY: { targetAgentId: string; amount: number; reason?: string };
+  CLAIM_BOUNTY: { targetAgentId: string };
+  GAMBLE: { amount: number; riskType: string };
+  BUY_DISGUISE: { disguiseType: string };
+  STEAL_VEHICLE: { vehicleId?: string };
+  ACCEPT_CONTRACT: { contractId: string };
 };
 
 // ============================================================================
@@ -122,8 +140,8 @@ export async function handleAction(
 ): Promise<ActionResult> {
   const { agent } = actionCtx;
 
-  // Check agent status - must be idle to perform most actions
-  if (agent.status === "jailed") {
+  // ATTEMPT_JAILBREAK is the only action allowed when jailed
+  if (agent.status === "jailed" && action !== "ATTEMPT_JAILBREAK") {
     return {
       ok: false,
       error: "AGENT_JAILED",
@@ -226,6 +244,28 @@ export async function handleAction(
     // Tax actions
     case "PAY_TAX":
       return handlePayTax(actionCtx, args as ActionArgs["PAY_TAX"]);
+    // Messaging
+    case "SEND_MESSAGE":
+      return handleSendMessage(actionCtx, args as ActionArgs["SEND_MESSAGE"]);
+    // GTA-like freedom actions
+    case "ATTEMPT_JAILBREAK":
+      return handleAttemptJailbreak(actionCtx, args as ActionArgs["ATTEMPT_JAILBREAK"]);
+    case "BRIBE_COPS":
+      return handleBribeCops(actionCtx, args as ActionArgs["BRIBE_COPS"]);
+    case "ATTACK_AGENT":
+      return handleAttackAgent(actionCtx, args as ActionArgs["ATTACK_AGENT"]);
+    case "PLACE_BOUNTY":
+      return handlePlaceBounty(actionCtx, args as ActionArgs["PLACE_BOUNTY"]);
+    case "CLAIM_BOUNTY":
+      return handleClaimBounty(actionCtx, args as ActionArgs["CLAIM_BOUNTY"]);
+    case "GAMBLE":
+      return handleGamble(actionCtx, args as ActionArgs["GAMBLE"]);
+    case "BUY_DISGUISE":
+      return handleBuyDisguise(actionCtx, args as ActionArgs["BUY_DISGUISE"]);
+    case "STEAL_VEHICLE":
+      return handleStealVehicle(actionCtx, args as ActionArgs["STEAL_VEHICLE"]);
+    case "ACCEPT_CONTRACT":
+      return handleAcceptContract(actionCtx, args as ActionArgs["ACCEPT_CONTRACT"]);
     default:
       return {
         ok: false,
@@ -3934,6 +3974,1301 @@ async function handlePayTax(
       taxPaid: taxOwed,
       newCash,
       nextTaxDueTick: world.tick + TAX_DEFAULTS.taxIntervalTicks,
+    },
+  };
+}
+
+// ============================================================================
+// MESSAGING
+// ============================================================================
+
+async function handleSendMessage(
+  actionCtx: ActionContext,
+  args: ActionArgs["SEND_MESSAGE"]
+): Promise<ActionResult> {
+  const { ctx, agent, world, requestId } = actionCtx;
+  const { targetAgentId, content } = args;
+
+  // 1. Validate target agent exists
+  let targetAgent;
+  try {
+    targetAgent = await ctx.db.get(targetAgentId as Id<"agents">);
+  } catch {
+    return {
+      ok: false,
+      error: "INVALID_AGENT",
+      message: ERROR_CODES.INVALID_AGENT,
+    };
+  }
+
+  if (!targetAgent) {
+    return {
+      ok: false,
+      error: "INVALID_AGENT",
+      message: ERROR_CODES.INVALID_AGENT,
+    };
+  }
+
+  // 2. Cannot message yourself
+  if (targetAgentId === agent._id.toString()) {
+    return {
+      ok: false,
+      error: "INVALID_AGENT",
+      message: "Cannot send a message to yourself",
+    };
+  }
+
+  // 3. Validate content length (1-500 chars)
+  if (!content || content.length === 0) {
+    return {
+      ok: false,
+      error: "INVALID_REQUEST_ID",
+      message: "Message content cannot be empty",
+    };
+  }
+
+  if (content.length > 500) {
+    return {
+      ok: false,
+      error: "INVALID_REQUEST_ID",
+      message: "Message content cannot exceed 500 characters",
+    };
+  }
+
+  // 4. Insert message record
+  const messageId = await ctx.db.insert("messages", {
+    senderId: agent._id,
+    recipientId: targetAgent._id,
+    content,
+    read: false,
+    tick: world.tick,
+    timestamp: Date.now(),
+  });
+
+  // 5. Log MESSAGE_SENT event
+  await ctx.db.insert("events", {
+    tick: world.tick,
+    timestamp: Date.now(),
+    type: "MESSAGE_SENT",
+    agentId: agent._id,
+    zoneId: agent.locationZoneId,
+    entityId: messageId,
+    payload: {
+      recipientId: targetAgent._id,
+      recipientName: targetAgent.name,
+      contentLength: content.length,
+    },
+    requestId,
+  });
+
+  // 6. Return success with messageId
+  return {
+    ok: true,
+    message: `Message sent to ${targetAgent.name}`,
+    result: {
+      messageId,
+      recipientId: targetAgent._id,
+      recipientName: targetAgent.name,
+    },
+  };
+}
+
+// ============================================================================
+// GTA-LIKE FREEDOM ACTION HANDLERS
+// ============================================================================
+
+/**
+ * ATTEMPT_JAILBREAK - Try to escape from jail
+ * Prereq: Agent must be jailed
+ * Success (20% + combat bonus): Free agent, move to residential, +20 heat
+ * Failure: Extend sentence by 50 ticks, +30 heat
+ */
+async function handleAttemptJailbreak(
+  actionCtx: ActionContext,
+  _args: ActionArgs["ATTEMPT_JAILBREAK"]
+): Promise<ActionResult> {
+  const { ctx, agent, world, requestId } = actionCtx;
+
+  // 1. Must be jailed
+  if (agent.status !== "jailed") {
+    return { ok: false, error: "NOT_JAILED", message: ERROR_CODES.NOT_JAILED };
+  }
+
+  // 2. Calculate success chance
+  const baseSuccess = GTA_DEFAULTS.jailbreakBaseSuccess;
+  const combatBonus = agent.skills.combat * GTA_DEFAULTS.jailbreakCombatBonus;
+  const successChance = Math.min(0.80, baseSuccess + combatBonus); // Cap at 80%
+
+  // 3. Roll for success
+  const rng = createTickRng(world.seed, world.tick);
+  const succeeded = rng.randomChance(successChance);
+
+  const timestamp = Date.now();
+
+  if (succeeded) {
+    // Success - free agent
+    const residentialZone = await ctx.db
+      .query("zones")
+      .withIndex("by_slug", (q) => q.eq("slug", "residential"))
+      .first();
+
+    const newHeat = Math.min(DEFAULTS.maxHeat, agent.heat + GTA_DEFAULTS.jailbreakSuccessHeat);
+
+    await ctx.db.patch(agent._id, {
+      status: "idle",
+      busyUntilTick: null,
+      busyAction: null,
+      heat: newHeat,
+      locationZoneId: residentialZone?._id ?? agent.locationZoneId,
+    });
+
+    // Log success event
+    await ctx.db.insert("events", {
+      tick: world.tick,
+      timestamp,
+      type: "JAILBREAK_SUCCESS",
+      agentId: agent._id,
+      zoneId: residentialZone?._id ?? agent.locationZoneId,
+      entityId: null,
+      payload: {
+        successChance,
+        heatGained: GTA_DEFAULTS.jailbreakSuccessHeat,
+        newHeat,
+      },
+      requestId,
+    });
+
+    return {
+      ok: true,
+      message: "Escaped from jail!",
+      result: {
+        success: true,
+        successChance,
+        newHeat,
+        newZone: "residential",
+      },
+    };
+  } else {
+    // Failure - extend sentence
+    const currentSentence = agent.busyUntilTick ?? world.tick;
+    const newSentence = currentSentence + GTA_DEFAULTS.jailbreakFailureSentenceAdd;
+    const newHeat = Math.min(DEFAULTS.maxHeat, agent.heat + GTA_DEFAULTS.jailbreakFailureHeat);
+
+    await ctx.db.patch(agent._id, {
+      busyUntilTick: newSentence,
+      heat: newHeat,
+    });
+
+    // Log failure event
+    await ctx.db.insert("events", {
+      tick: world.tick,
+      timestamp,
+      type: "JAILBREAK_FAILED",
+      agentId: agent._id,
+      zoneId: agent.locationZoneId,
+      entityId: null,
+      payload: {
+        successChance,
+        sentenceExtension: GTA_DEFAULTS.jailbreakFailureSentenceAdd,
+        newReleaseTick: newSentence,
+        heatGained: GTA_DEFAULTS.jailbreakFailureHeat,
+      },
+      requestId,
+    });
+
+    return {
+      ok: true,
+      message: `Jailbreak failed! Sentence extended by ${GTA_DEFAULTS.jailbreakFailureSentenceAdd} ticks.`,
+      result: {
+        success: false,
+        successChance,
+        sentenceExtension: GTA_DEFAULTS.jailbreakFailureSentenceAdd,
+        newReleaseTick: newSentence,
+        newHeat,
+      },
+    };
+  }
+}
+
+/**
+ * BRIBE_COPS - Pay to reduce heat
+ * Prereq: Heat > 60, have enough cash
+ * Success (60% + negotiation bonus): Reduce heat by 50%
+ * Failure: Lose money, +20 heat
+ */
+async function handleBribeCops(
+  actionCtx: ActionContext,
+  _args: ActionArgs["BRIBE_COPS"]
+): Promise<ActionResult> {
+  const { ctx, agent, world, requestId } = actionCtx;
+
+  // 1. Must have high enough heat
+  if (agent.heat < GTA_DEFAULTS.bribeMinHeat) {
+    return {
+      ok: false,
+      error: "HEAT_TOO_LOW",
+      message: `${ERROR_CODES.HEAT_TOO_LOW}. Need at least ${GTA_DEFAULTS.bribeMinHeat} heat.`,
+    };
+  }
+
+  // 2. Calculate bribe cost
+  const bribeCost = agent.heat * GTA_DEFAULTS.bribeCostPerHeat;
+
+  // 3. Check agent has enough cash
+  if (agent.cash < bribeCost) {
+    return {
+      ok: false,
+      error: "INSUFFICIENT_FUNDS",
+      message: `${ERROR_CODES.INSUFFICIENT_FUNDS}. Bribe costs $${bribeCost} (${agent.heat} heat × $${GTA_DEFAULTS.bribeCostPerHeat}).`,
+    };
+  }
+
+  // 4. Calculate success chance
+  const baseSuccess = GTA_DEFAULTS.bribeBaseSuccess;
+  const negotiationBonus = agent.skills.negotiation * GTA_DEFAULTS.bribeNegotiationBonus;
+  const successChance = Math.min(0.95, baseSuccess + negotiationBonus);
+
+  // 5. Roll for success
+  const rng = createTickRng(world.seed, world.tick);
+  const succeeded = rng.randomChance(successChance);
+
+  const timestamp = Date.now();
+
+  // Always deduct the bribe cost
+  const newCash = agent.cash - bribeCost;
+
+  if (succeeded) {
+    // Success - reduce heat by 50%
+    const newHeat = Math.floor(agent.heat * 0.5);
+
+    await ctx.db.patch(agent._id, {
+      cash: newCash,
+      heat: newHeat,
+    });
+
+    // Log success event
+    const eventId = await ctx.db.insert("events", {
+      tick: world.tick,
+      timestamp,
+      type: "BRIBE_SUCCESS",
+      agentId: agent._id,
+      zoneId: agent.locationZoneId,
+      entityId: null,
+      payload: {
+        bribeCost,
+        heatReduced: agent.heat - newHeat,
+        newHeat,
+        successChance,
+      },
+      requestId,
+    });
+
+    // Ledger entry
+    await ctx.db.insert("ledger", {
+      tick: world.tick,
+      agentId: agent._id,
+      type: "debit",
+      amount: bribeCost,
+      reason: "BRIBE",
+      balance: newCash,
+      refEventId: eventId,
+    });
+
+    return {
+      ok: true,
+      message: `Bribe successful! Heat reduced from ${agent.heat} to ${newHeat}.`,
+      result: {
+        success: true,
+        bribeCost,
+        heatReduced: agent.heat - newHeat,
+        newHeat,
+        newCash,
+        successChance,
+      },
+    };
+  } else {
+    // Failure - lose money and gain heat
+    const newHeat = Math.min(DEFAULTS.maxHeat, agent.heat + GTA_DEFAULTS.bribeFailureHeatAdd);
+
+    await ctx.db.patch(agent._id, {
+      cash: newCash,
+      heat: newHeat,
+    });
+
+    // Log failure event
+    const eventId = await ctx.db.insert("events", {
+      tick: world.tick,
+      timestamp,
+      type: "BRIBE_FAILED",
+      agentId: agent._id,
+      zoneId: agent.locationZoneId,
+      entityId: null,
+      payload: {
+        bribeCost,
+        heatGained: GTA_DEFAULTS.bribeFailureHeatAdd,
+        newHeat,
+        successChance,
+      },
+      requestId,
+    });
+
+    // Ledger entry
+    await ctx.db.insert("ledger", {
+      tick: world.tick,
+      agentId: agent._id,
+      type: "debit",
+      amount: bribeCost,
+      reason: "BRIBE_FAILED",
+      balance: newCash,
+      refEventId: eventId,
+    });
+
+    return {
+      ok: true,
+      message: `Bribe rejected! Lost $${bribeCost} and gained ${GTA_DEFAULTS.bribeFailureHeatAdd} heat.`,
+      result: {
+        success: false,
+        bribeCost,
+        heatGained: GTA_DEFAULTS.bribeFailureHeatAdd,
+        newHeat,
+        newCash,
+        successChance,
+      },
+    };
+  }
+}
+
+/**
+ * ATTACK_AGENT - PvP combat dealing damage
+ * Prereq: Target in same zone, target is idle
+ * Success (50% + combat bonus): Deal 15-40 damage
+ * Kill (target health → 0): Target hospitalized 100 ticks, loses 25% cash
+ * Failure: Take 5-15 counter-damage
+ * Always: +25 heat
+ */
+async function handleAttackAgent(
+  actionCtx: ActionContext,
+  args: ActionArgs["ATTACK_AGENT"]
+): Promise<ActionResult> {
+  const { ctx, agent, world, requestId } = actionCtx;
+  const { targetAgentId } = args;
+
+  // 1. Cannot attack self
+  if (targetAgentId === agent._id.toString()) {
+    return { ok: false, error: "CANNOT_ATTACK_SELF", message: ERROR_CODES.CANNOT_ATTACK_SELF };
+  }
+
+  // 2. Get target agent
+  let targetAgent: Doc<"agents"> | null = null;
+  try {
+    targetAgent = await ctx.db.get(targetAgentId as Id<"agents">);
+  } catch {
+    return { ok: false, error: "INVALID_AGENT", message: ERROR_CODES.INVALID_AGENT };
+  }
+
+  if (!targetAgent) {
+    return { ok: false, error: "INVALID_AGENT", message: ERROR_CODES.INVALID_AGENT };
+  }
+
+  // 3. Target must be in same zone
+  if (targetAgent.locationZoneId !== agent.locationZoneId) {
+    return { ok: false, error: "TARGET_NOT_IN_ZONE", message: ERROR_CODES.TARGET_NOT_IN_ZONE };
+  }
+
+  // 4. Target must be idle
+  if (targetAgent.status !== "idle") {
+    return { ok: false, error: "TARGET_NOT_IDLE", message: ERROR_CODES.TARGET_NOT_IDLE };
+  }
+
+  // 5. Calculate success chance
+  const baseSuccess = GTA_DEFAULTS.attackBaseSuccess;
+  const combatBonus = agent.skills.combat * GTA_DEFAULTS.attackCombatBonus;
+  const successChance = Math.min(0.95, baseSuccess + combatBonus);
+
+  // 6. Roll for success
+  const rng = createTickRng(world.seed, world.tick);
+  const succeeded = rng.randomChance(successChance);
+
+  const timestamp = Date.now();
+
+  // Always gain heat for attacking
+  const newAttackerHeat = Math.min(DEFAULTS.maxHeat, agent.heat + GTA_DEFAULTS.attackHeat);
+
+  // Initialize combat stats if needed
+  const attackerCombatStats = agent.combatStats ?? {
+    kills: 0,
+    deaths: 0,
+    bountiesClaimed: 0,
+    bountiesPlaced: 0,
+  };
+  const targetCombatStats = targetAgent.combatStats ?? {
+    kills: 0,
+    deaths: 0,
+    bountiesClaimed: 0,
+    bountiesPlaced: 0,
+  };
+
+  if (succeeded) {
+    // Calculate damage dealt
+    const damage = rng.randomInt(GTA_DEFAULTS.attackBaseDamage.min, GTA_DEFAULTS.attackBaseDamage.max);
+    const newTargetHealth = Math.max(0, targetAgent.health - damage);
+    const killed = newTargetHealth === 0;
+
+    let cashStolen = 0;
+    let newTargetCash = targetAgent.cash;
+
+    if (killed) {
+      // Target killed - hospitalize them and they lose 25% cash
+      cashStolen = Math.floor(targetAgent.cash * GTA_DEFAULTS.deathCashLoss);
+      newTargetCash = targetAgent.cash - cashStolen;
+
+      // Get hospital zone
+      const hospitalZone = await ctx.db
+        .query("zones")
+        .withIndex("by_slug", (q) => q.eq("slug", "hospital"))
+        .first();
+
+      await ctx.db.patch(targetAgent._id, {
+        health: 50, // Respawn with 50 health
+        cash: newTargetCash,
+        status: "hospitalized",
+        busyUntilTick: world.tick + GTA_DEFAULTS.deathRespawnTicks,
+        busyAction: "RECOVERING",
+        locationZoneId: hospitalZone?._id ?? targetAgent.locationZoneId,
+        combatStats: { ...targetCombatStats, deaths: targetCombatStats.deaths + 1 },
+      });
+
+      // Attacker gets the stolen cash and kill credit
+      await ctx.db.patch(agent._id, {
+        heat: newAttackerHeat,
+        cash: agent.cash + cashStolen,
+        combatStats: { ...attackerCombatStats, kills: attackerCombatStats.kills + 1 },
+      });
+
+      // Log kill event
+      await ctx.db.insert("events", {
+        tick: world.tick,
+        timestamp,
+        type: "AGENT_KILLED",
+        agentId: agent._id,
+        zoneId: agent.locationZoneId,
+        entityId: null,
+        payload: {
+          targetAgentId: targetAgent._id,
+          targetAgentName: targetAgent.name,
+          damage,
+          cashStolen,
+          respawnTicks: GTA_DEFAULTS.deathRespawnTicks,
+        },
+        requestId,
+      });
+    } else {
+      // Target damaged but not killed
+      await ctx.db.patch(targetAgent._id, {
+        health: newTargetHealth,
+      });
+
+      await ctx.db.patch(agent._id, {
+        heat: newAttackerHeat,
+      });
+    }
+
+    // Log attack event
+    await ctx.db.insert("events", {
+      tick: world.tick,
+      timestamp,
+      type: "AGENT_ATTACKED",
+      agentId: agent._id,
+      zoneId: agent.locationZoneId,
+      entityId: null,
+      payload: {
+        targetAgentId: targetAgent._id,
+        targetAgentName: targetAgent.name,
+        damage,
+        killed,
+        cashStolen,
+        newTargetHealth,
+        successChance,
+      },
+      requestId,
+    });
+
+    return {
+      ok: true,
+      message: killed
+        ? `Killed ${targetAgent.name}! Stole $${cashStolen}.`
+        : `Hit ${targetAgent.name} for ${damage} damage!`,
+      result: {
+        success: true,
+        targetAgentId: targetAgent._id,
+        targetAgentName: targetAgent.name,
+        damage,
+        killed,
+        cashStolen,
+        newTargetHealth,
+        newAttackerHeat,
+        successChance,
+      },
+    };
+  } else {
+    // Attack failed - take counter-damage
+    const counterDamage = rng.randomInt(
+      GTA_DEFAULTS.attackCounterDamage.min,
+      GTA_DEFAULTS.attackCounterDamage.max
+    );
+    const newAttackerHealth = Math.max(0, agent.health - counterDamage);
+    const attackerHospitalized = newAttackerHealth === 0;
+
+    await ctx.db.patch(agent._id, {
+      health: newAttackerHealth,
+      heat: newAttackerHeat,
+      status: attackerHospitalized ? "hospitalized" : agent.status,
+      busyUntilTick: attackerHospitalized ? world.tick + GTA_DEFAULTS.deathRespawnTicks : agent.busyUntilTick,
+      busyAction: attackerHospitalized ? "RECOVERING" : agent.busyAction,
+    });
+
+    // Log failed attack event
+    await ctx.db.insert("events", {
+      tick: world.tick,
+      timestamp,
+      type: "AGENT_ATTACKED",
+      agentId: agent._id,
+      zoneId: agent.locationZoneId,
+      entityId: null,
+      payload: {
+        targetAgentId: targetAgent._id,
+        targetAgentName: targetAgent.name,
+        attackFailed: true,
+        counterDamage,
+        attackerHospitalized,
+        successChance,
+      },
+      requestId,
+    });
+
+    return {
+      ok: true,
+      message: `Attack failed! Took ${counterDamage} counter-damage.`,
+      result: {
+        success: false,
+        targetAgentId: targetAgent._id,
+        targetAgentName: targetAgent.name,
+        counterDamage,
+        newAttackerHealth,
+        attackerHospitalized,
+        newAttackerHeat,
+        successChance,
+      },
+    };
+  }
+}
+
+/**
+ * PLACE_BOUNTY - Put bounty on another agent
+ * Prereq: Have $500-$50,000 for bounty, target exists
+ */
+async function handlePlaceBounty(
+  actionCtx: ActionContext,
+  args: ActionArgs["PLACE_BOUNTY"]
+): Promise<ActionResult> {
+  const { ctx, agent, world, requestId } = actionCtx;
+  const { targetAgentId, amount, reason } = args;
+
+  // 1. Cannot place bounty on self
+  if (targetAgentId === agent._id.toString()) {
+    return { ok: false, error: "CANNOT_BOUNTY_SELF", message: ERROR_CODES.CANNOT_BOUNTY_SELF };
+  }
+
+  // 2. Validate bounty amount
+  if (amount < GTA_DEFAULTS.bountyMinAmount) {
+    return {
+      ok: false,
+      error: "BOUNTY_TOO_LOW",
+      message: `${ERROR_CODES.BOUNTY_TOO_LOW}. Minimum is $${GTA_DEFAULTS.bountyMinAmount}.`,
+    };
+  }
+
+  if (amount > GTA_DEFAULTS.bountyMaxAmount) {
+    return {
+      ok: false,
+      error: "BOUNTY_TOO_HIGH",
+      message: `${ERROR_CODES.BOUNTY_TOO_HIGH}. Maximum is $${GTA_DEFAULTS.bountyMaxAmount}.`,
+    };
+  }
+
+  // 3. Check agent has enough cash
+  if (agent.cash < amount) {
+    return {
+      ok: false,
+      error: "INSUFFICIENT_FUNDS",
+      message: `${ERROR_CODES.INSUFFICIENT_FUNDS}. Need $${amount}.`,
+    };
+  }
+
+  // 4. Get target agent
+  let targetAgent: Doc<"agents"> | null = null;
+  try {
+    targetAgent = await ctx.db.get(targetAgentId as Id<"agents">);
+  } catch {
+    return { ok: false, error: "INVALID_AGENT", message: ERROR_CODES.INVALID_AGENT };
+  }
+
+  if (!targetAgent) {
+    return { ok: false, error: "INVALID_AGENT", message: ERROR_CODES.INVALID_AGENT };
+  }
+
+  // 5. Create bounty record
+  const expiresAt = world.tick + GTA_DEFAULTS.bountyDurationTicks;
+  const bountyId = await ctx.db.insert("bounties", {
+    targetAgentId: targetAgent._id,
+    placedByAgentId: agent._id,
+    amount,
+    reason,
+    status: "active",
+    createdAt: Date.now(),
+    expiresAt,
+  });
+
+  // 6. Deduct cash from agent
+  const newCash = agent.cash - amount;
+
+  // Update combat stats
+  const combatStats = agent.combatStats ?? {
+    kills: 0,
+    deaths: 0,
+    bountiesClaimed: 0,
+    bountiesPlaced: 0,
+  };
+
+  await ctx.db.patch(agent._id, {
+    cash: newCash,
+    combatStats: { ...combatStats, bountiesPlaced: combatStats.bountiesPlaced + 1 },
+  });
+
+  // 7. Log event
+  const eventId = await ctx.db.insert("events", {
+    tick: world.tick,
+    timestamp: Date.now(),
+    type: "BOUNTY_PLACED",
+    agentId: agent._id,
+    zoneId: agent.locationZoneId,
+    entityId: bountyId,
+    payload: {
+      targetAgentId: targetAgent._id,
+      targetAgentName: targetAgent.name,
+      amount,
+      reason,
+      expiresAt,
+    },
+    requestId,
+  });
+
+  // 8. Ledger entry
+  await ctx.db.insert("ledger", {
+    tick: world.tick,
+    agentId: agent._id,
+    type: "debit",
+    amount,
+    reason: "BOUNTY_PLACED",
+    balance: newCash,
+    refEventId: eventId,
+  });
+
+  return {
+    ok: true,
+    message: `Placed $${amount} bounty on ${targetAgent.name}!`,
+    result: {
+      bountyId,
+      targetAgentId: targetAgent._id,
+      targetAgentName: targetAgent.name,
+      amount,
+      expiresAt,
+    },
+  };
+}
+
+/**
+ * CLAIM_BOUNTY - Collect reward for killing bounty target
+ * Prereq: Target has active bounty, you killed them (they're hospitalized/dead)
+ */
+async function handleClaimBounty(
+  actionCtx: ActionContext,
+  args: ActionArgs["CLAIM_BOUNTY"]
+): Promise<ActionResult> {
+  const { ctx, agent, world, requestId } = actionCtx;
+  const { targetAgentId } = args;
+
+  // 1. Get target agent
+  let targetAgent: Doc<"agents"> | null = null;
+  try {
+    targetAgent = await ctx.db.get(targetAgentId as Id<"agents">);
+  } catch {
+    return { ok: false, error: "INVALID_AGENT", message: ERROR_CODES.INVALID_AGENT };
+  }
+
+  if (!targetAgent) {
+    return { ok: false, error: "INVALID_AGENT", message: ERROR_CODES.INVALID_AGENT };
+  }
+
+  // 2. Find active bounty on target
+  const bounties = await ctx.db
+    .query("bounties")
+    .withIndex("by_targetAgentId", (q) => q.eq("targetAgentId", targetAgent._id))
+    .collect();
+
+  const activeBounty = bounties.find((b) => b.status === "active");
+
+  if (!activeBounty) {
+    return { ok: false, error: "NO_ACTIVE_BOUNTY", message: ERROR_CODES.NO_ACTIVE_BOUNTY };
+  }
+
+  // 3. Check if agent recently killed target (look for AGENT_KILLED event in last 10 ticks)
+  const recentEvents = await ctx.db
+    .query("events")
+    .withIndex("by_agentId", (q) => q.eq("agentId", agent._id))
+    .order("desc")
+    .take(50);
+
+  const killEvent = recentEvents.find(
+    (e) =>
+      e.type === "AGENT_KILLED" &&
+      e.tick >= world.tick - 10 &&
+      (e.payload as { targetAgentId?: string })?.targetAgentId === targetAgent._id.toString()
+  );
+
+  if (!killEvent) {
+    return {
+      ok: false,
+      error: "NO_ACTIVE_BOUNTY",
+      message: "You haven't killed the bounty target recently.",
+    };
+  }
+
+  // 4. Claim bounty
+  await ctx.db.patch(activeBounty._id, {
+    status: "claimed",
+    claimedByAgentId: agent._id,
+  });
+
+  // 5. Pay out bounty and add heat
+  const newCash = agent.cash + activeBounty.amount;
+  const newHeat = Math.min(DEFAULTS.maxHeat, agent.heat + GTA_DEFAULTS.bountyClaimHeat);
+
+  // Update combat stats
+  const combatStats = agent.combatStats ?? {
+    kills: 0,
+    deaths: 0,
+    bountiesClaimed: 0,
+    bountiesPlaced: 0,
+  };
+
+  await ctx.db.patch(agent._id, {
+    cash: newCash,
+    heat: newHeat,
+    combatStats: { ...combatStats, bountiesClaimed: combatStats.bountiesClaimed + 1 },
+  });
+
+  // 6. Log event
+  const eventId = await ctx.db.insert("events", {
+    tick: world.tick,
+    timestamp: Date.now(),
+    type: "BOUNTY_CLAIMED",
+    agentId: agent._id,
+    zoneId: agent.locationZoneId,
+    entityId: activeBounty._id,
+    payload: {
+      targetAgentId: targetAgent._id,
+      targetAgentName: targetAgent.name,
+      amount: activeBounty.amount,
+      placedByAgentId: activeBounty.placedByAgentId,
+      heatGained: GTA_DEFAULTS.bountyClaimHeat,
+    },
+    requestId,
+  });
+
+  // 7. Ledger entry
+  await ctx.db.insert("ledger", {
+    tick: world.tick,
+    agentId: agent._id,
+    type: "credit",
+    amount: activeBounty.amount,
+    reason: "BOUNTY_CLAIMED",
+    balance: newCash,
+    refEventId: eventId,
+  });
+
+  return {
+    ok: true,
+    message: `Claimed $${activeBounty.amount} bounty on ${targetAgent.name}!`,
+    result: {
+      bountyId: activeBounty._id,
+      targetAgentId: targetAgent._id,
+      targetAgentName: targetAgent.name,
+      amount: activeBounty.amount,
+      newCash,
+      newHeat,
+    },
+  };
+}
+
+/**
+ * GAMBLE - Risk money at the casino
+ * Prereq: In market zone, $10-$5000 bet
+ */
+async function handleGamble(
+  actionCtx: ActionContext,
+  args: ActionArgs["GAMBLE"]
+): Promise<ActionResult> {
+  const { ctx, agent, world, requestId } = actionCtx;
+  const { amount, riskType } = args;
+
+  // 1. Must be in market zone
+  const currentZone = await ctx.db.get(agent.locationZoneId);
+  if (!currentZone || currentZone.slug !== "market") {
+    return { ok: false, error: "NOT_IN_MARKET", message: ERROR_CODES.NOT_IN_MARKET };
+  }
+
+  // 2. Validate bet amount
+  if (amount < GTA_DEFAULTS.gambleMinAmount) {
+    return {
+      ok: false,
+      error: "GAMBLE_TOO_LOW",
+      message: `${ERROR_CODES.GAMBLE_TOO_LOW}. Minimum bet is $${GTA_DEFAULTS.gambleMinAmount}.`,
+    };
+  }
+
+  if (amount > GTA_DEFAULTS.gambleMaxAmount) {
+    return {
+      ok: false,
+      error: "GAMBLE_TOO_HIGH",
+      message: `${ERROR_CODES.GAMBLE_TOO_HIGH}. Maximum bet is $${GTA_DEFAULTS.gambleMaxAmount}.`,
+    };
+  }
+
+  // 3. Check agent has enough cash
+  if (agent.cash < amount) {
+    return {
+      ok: false,
+      error: "INSUFFICIENT_FUNDS",
+      message: `${ERROR_CODES.INSUFFICIENT_FUNDS}. Need $${amount}.`,
+    };
+  }
+
+  // 4. Validate risk type
+  if (!GAMBLE_RISK_TYPES.includes(riskType as GambleRiskType)) {
+    return {
+      ok: false,
+      error: "INVALID_GAMBLE_TYPE",
+      message: `${ERROR_CODES.INVALID_GAMBLE_TYPE}. Valid types: ${GAMBLE_RISK_TYPES.join(", ")}.`,
+    };
+  }
+
+  const odds = GTA_DEFAULTS.gambleOdds[riskType as GambleRiskType];
+
+  // 5. Roll for win
+  const rng = createTickRng(world.seed, world.tick);
+  const won = rng.randomChance(odds.winChance);
+
+  const timestamp = Date.now();
+
+  if (won) {
+    // Win - multiply bet
+    const winnings = amount * odds.multiplier;
+    const newCash = agent.cash + winnings - amount; // Net gain
+
+    await ctx.db.patch(agent._id, { cash: newCash });
+
+    // Log win event
+    const eventId = await ctx.db.insert("events", {
+      tick: world.tick,
+      timestamp,
+      type: "GAMBLE_WON",
+      agentId: agent._id,
+      zoneId: agent.locationZoneId,
+      entityId: null,
+      payload: {
+        betAmount: amount,
+        riskType,
+        multiplier: odds.multiplier,
+        winnings,
+        winChance: odds.winChance,
+      },
+      requestId,
+    });
+
+    // Ledger entry for net gain
+    await ctx.db.insert("ledger", {
+      tick: world.tick,
+      agentId: agent._id,
+      type: "credit",
+      amount: winnings - amount,
+      reason: "GAMBLING_WIN",
+      balance: newCash,
+      refEventId: eventId,
+    });
+
+    return {
+      ok: true,
+      message: `Won $${winnings}! (${odds.multiplier}x multiplier)`,
+      result: {
+        won: true,
+        betAmount: amount,
+        riskType,
+        multiplier: odds.multiplier,
+        winnings,
+        netGain: winnings - amount,
+        newCash,
+        winChance: odds.winChance,
+      },
+    };
+  } else {
+    // Lose bet
+    const newCash = agent.cash - amount;
+
+    await ctx.db.patch(agent._id, { cash: newCash });
+
+    // Log lose event
+    const eventId = await ctx.db.insert("events", {
+      tick: world.tick,
+      timestamp,
+      type: "GAMBLE_LOST",
+      agentId: agent._id,
+      zoneId: agent.locationZoneId,
+      entityId: null,
+      payload: {
+        betAmount: amount,
+        riskType,
+        winChance: odds.winChance,
+      },
+      requestId,
+    });
+
+    // Ledger entry
+    await ctx.db.insert("ledger", {
+      tick: world.tick,
+      agentId: agent._id,
+      type: "debit",
+      amount,
+      reason: "GAMBLING_LOSS",
+      balance: newCash,
+      refEventId: eventId,
+    });
+
+    return {
+      ok: true,
+      message: `Lost $${amount}. Better luck next time!`,
+      result: {
+        won: false,
+        betAmount: amount,
+        riskType,
+        amountLost: amount,
+        newCash,
+        winChance: odds.winChance,
+      },
+    };
+  }
+}
+
+/**
+ * BUY_DISGUISE - Purchase a disguise for faster heat decay
+ * Options: basic ($200), professional ($500), elite ($1500)
+ */
+async function handleBuyDisguise(
+  actionCtx: ActionContext,
+  args: ActionArgs["BUY_DISGUISE"]
+): Promise<ActionResult> {
+  const { ctx, agent, world, requestId } = actionCtx;
+  const { disguiseType } = args;
+
+  // 1. Validate disguise type
+  if (!DISGUISE_TYPES.includes(disguiseType as DisguiseType)) {
+    return {
+      ok: false,
+      error: "INVALID_DISGUISE_TYPE",
+      message: `${ERROR_CODES.INVALID_DISGUISE_TYPE}. Valid types: ${DISGUISE_TYPES.join(", ")}.`,
+    };
+  }
+
+  const disguiseConfig = GTA_DEFAULTS.disguiseTypes[disguiseType as DisguiseType];
+
+  // 2. Check agent has enough cash
+  if (agent.cash < disguiseConfig.cost) {
+    return {
+      ok: false,
+      error: "INSUFFICIENT_FUNDS",
+      message: `${ERROR_CODES.INSUFFICIENT_FUNDS}. ${disguiseType} disguise costs $${disguiseConfig.cost}.`,
+    };
+  }
+
+  // 3. Deduct cash
+  const newCash = agent.cash - disguiseConfig.cost;
+  await ctx.db.patch(agent._id, { cash: newCash });
+
+  // 4. Create disguise record (replacing any existing)
+  const existingDisguise = await ctx.db
+    .query("disguises")
+    .withIndex("by_agentId", (q) => q.eq("agentId", agent._id))
+    .first();
+
+  if (existingDisguise) {
+    await ctx.db.delete(existingDisguise._id);
+  }
+
+  const expiresAtTick = world.tick + disguiseConfig.durationTicks;
+  const disguiseId = await ctx.db.insert("disguises", {
+    agentId: agent._id,
+    type: disguiseType as DisguiseType,
+    heatReduction: disguiseConfig.heatReduction,
+    expiresAtTick,
+  });
+
+  // 5. Log event
+  const eventId = await ctx.db.insert("events", {
+    tick: world.tick,
+    timestamp: Date.now(),
+    type: "DISGUISE_PURCHASED",
+    agentId: agent._id,
+    zoneId: agent.locationZoneId,
+    entityId: disguiseId,
+    payload: {
+      disguiseType,
+      cost: disguiseConfig.cost,
+      heatReduction: disguiseConfig.heatReduction,
+      durationTicks: disguiseConfig.durationTicks,
+      expiresAtTick,
+    },
+    requestId,
+  });
+
+  // 6. Ledger entry
+  await ctx.db.insert("ledger", {
+    tick: world.tick,
+    agentId: agent._id,
+    type: "debit",
+    amount: disguiseConfig.cost,
+    reason: "DISGUISE_PURCHASE",
+    balance: newCash,
+    refEventId: eventId,
+  });
+
+  return {
+    ok: true,
+    message: `Purchased ${disguiseType} disguise. Heat decay increased by ${disguiseConfig.heatReduction} for ${disguiseConfig.durationTicks} ticks.`,
+    result: {
+      disguiseId,
+      disguiseType,
+      cost: disguiseConfig.cost,
+      heatReduction: disguiseConfig.heatReduction,
+      durationTicks: disguiseConfig.durationTicks,
+      expiresAtTick,
+      newCash,
+    },
+  };
+}
+
+/**
+ * STEAL_VEHICLE - Steal a vehicle for travel speed bonus
+ * Prereq: In zone with parked vehicle, don't already own vehicle
+ */
+async function handleStealVehicle(
+  actionCtx: ActionContext,
+  args: ActionArgs["STEAL_VEHICLE"]
+): Promise<ActionResult> {
+  const { ctx, agent, world, requestId } = actionCtx;
+  const { vehicleId } = args;
+
+  // 1. Check agent doesn't already have a vehicle
+  if (agent.vehicleId) {
+    return { ok: false, error: "ALREADY_HAS_VEHICLE", message: ERROR_CODES.ALREADY_HAS_VEHICLE };
+  }
+
+  // 2. Find available vehicle in zone
+  let vehicle: Doc<"vehicles"> | null = null;
+
+  if (vehicleId) {
+    // Specific vehicle requested
+    try {
+      vehicle = await ctx.db.get(vehicleId as Id<"vehicles">);
+    } catch {
+      return { ok: false, error: "NO_VEHICLE_AVAILABLE", message: ERROR_CODES.NO_VEHICLE_AVAILABLE };
+    }
+
+    if (!vehicle || vehicle.zoneId !== agent.locationZoneId) {
+      return { ok: false, error: "NO_VEHICLE_AVAILABLE", message: ERROR_CODES.NO_VEHICLE_AVAILABLE };
+    }
+  } else {
+    // Find any available vehicle in zone
+    const vehiclesInZone = await ctx.db
+      .query("vehicles")
+      .withIndex("by_zoneId", (q) => q.eq("zoneId", agent.locationZoneId))
+      .collect();
+
+    // Find one without an owner
+    vehicle = vehiclesInZone.find((v) => !v.ownerId) ?? null;
+
+    if (!vehicle) {
+      return { ok: false, error: "NO_VEHICLE_AVAILABLE", message: ERROR_CODES.NO_VEHICLE_AVAILABLE };
+    }
+  }
+
+  // 3. Calculate success chance based on vehicle type
+  const vehicleConfig = GTA_DEFAULTS.vehicleTypes[vehicle.type as VehicleType];
+  const baseSuccess = vehicleConfig.stealDifficulty;
+  const drivingBonus = agent.skills.driving * GTA_DEFAULTS.vehicleDrivingSkillBonus;
+  const successChance = Math.min(0.95, baseSuccess + drivingBonus);
+
+  // 4. Roll for success
+  const rng = createTickRng(world.seed, world.tick);
+  const succeeded = rng.randomChance(successChance);
+
+  const timestamp = Date.now();
+
+  // Always gain heat for attempt
+  const heatGained = GTA_DEFAULTS.vehicleStealHeat;
+  const newHeat = Math.min(DEFAULTS.maxHeat, agent.heat + heatGained);
+
+  if (succeeded) {
+    // Success - steal the vehicle
+    await ctx.db.patch(vehicle._id, {
+      ownerId: agent._id,
+      isStolen: true,
+    });
+
+    await ctx.db.patch(agent._id, {
+      vehicleId: vehicle._id,
+      heat: newHeat,
+    });
+
+    // Log success event
+    await ctx.db.insert("events", {
+      tick: world.tick,
+      timestamp,
+      type: "VEHICLE_STOLEN",
+      agentId: agent._id,
+      zoneId: agent.locationZoneId,
+      entityId: vehicle._id,
+      payload: {
+        vehicleType: vehicle.type,
+        vehicleName: vehicle.name,
+        speedBonus: vehicleConfig.speedBonus,
+        heatGained,
+        successChance,
+      },
+      requestId,
+    });
+
+    return {
+      ok: true,
+      message: `Stole a ${vehicle.name}! Travel speed +${Math.round(vehicleConfig.speedBonus * 100)}%.`,
+      result: {
+        success: true,
+        vehicleId: vehicle._id,
+        vehicleType: vehicle.type,
+        vehicleName: vehicle.name,
+        speedBonus: vehicleConfig.speedBonus,
+        newHeat,
+        successChance,
+      },
+    };
+  } else {
+    // Failed - just gain heat
+    await ctx.db.patch(agent._id, { heat: newHeat });
+
+    // Log failure event
+    await ctx.db.insert("events", {
+      tick: world.tick,
+      timestamp,
+      type: "VEHICLE_STEAL_FAILED",
+      agentId: agent._id,
+      zoneId: agent.locationZoneId,
+      entityId: vehicle._id,
+      payload: {
+        vehicleType: vehicle.type,
+        heatGained,
+        successChance,
+      },
+      requestId,
+    });
+
+    return {
+      ok: true,
+      message: `Failed to steal the ${vehicle.name}. Gained ${heatGained} heat.`,
+      result: {
+        success: false,
+        vehicleType: vehicle.type,
+        newHeat,
+        successChance,
+      },
+    };
+  }
+}
+
+/**
+ * ACCEPT_CONTRACT - Accept an assassination contract
+ */
+async function handleAcceptContract(
+  actionCtx: ActionContext,
+  args: ActionArgs["ACCEPT_CONTRACT"]
+): Promise<ActionResult> {
+  const { ctx, agent, world, requestId } = actionCtx;
+  const { contractId } = args;
+
+  // 1. Get contract
+  let contract: Doc<"contracts"> | null = null;
+  try {
+    contract = await ctx.db.get(contractId as Id<"contracts">);
+  } catch {
+    return { ok: false, error: "NO_CONTRACT_AVAILABLE", message: ERROR_CODES.NO_CONTRACT_AVAILABLE };
+  }
+
+  if (!contract) {
+    return { ok: false, error: "NO_CONTRACT_AVAILABLE", message: ERROR_CODES.NO_CONTRACT_AVAILABLE };
+  }
+
+  // 2. Check contract status
+  if (contract.status !== "available") {
+    return { ok: false, error: "CONTRACT_ALREADY_ACCEPTED", message: ERROR_CODES.CONTRACT_ALREADY_ACCEPTED };
+  }
+
+  // 3. Check not expired
+  if (contract.expiresAt < Date.now()) {
+    await ctx.db.patch(contract._id, { status: "expired" });
+    return { ok: false, error: "NO_CONTRACT_AVAILABLE", message: "Contract has expired." };
+  }
+
+  // 4. Get target info
+  const targetAgent = await ctx.db.get(contract.targetAgentId);
+
+  // 5. Accept contract
+  await ctx.db.patch(contract._id, {
+    status: "accepted",
+    acceptedByAgentId: agent._id,
+  });
+
+  // 6. Log event
+  await ctx.db.insert("events", {
+    tick: world.tick,
+    timestamp: Date.now(),
+    type: "CONTRACT_ACCEPTED",
+    agentId: agent._id,
+    zoneId: agent.locationZoneId,
+    entityId: contract._id,
+    payload: {
+      targetAgentId: contract.targetAgentId,
+      targetAgentName: targetAgent?.name,
+      reward: contract.reward,
+    },
+    requestId,
+  });
+
+  return {
+    ok: true,
+    message: `Accepted contract on ${targetAgent?.name ?? "unknown"}. Reward: $${contract.reward}.`,
+    result: {
+      contractId: contract._id,
+      targetAgentId: contract.targetAgentId,
+      targetAgentName: targetAgent?.name,
+      reward: contract.reward,
     },
   };
 }

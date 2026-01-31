@@ -144,6 +144,18 @@ export const ACTION_TYPES = [
   "BETRAY_GANG",
   // Tax actions
   "PAY_TAX",
+  // Messaging
+  "SEND_MESSAGE",
+  // GTA-like freedom actions
+  "ATTEMPT_JAILBREAK",
+  "BRIBE_COPS",
+  "ATTACK_AGENT",
+  "PLACE_BOUNTY",
+  "CLAIM_BOUNTY",
+  "GAMBLE",
+  "BUY_DISGUISE",
+  "STEAL_VEHICLE",
+  "ACCEPT_CONTRACT",
 ] as const;
 
 export type ActionType = (typeof ACTION_TYPES)[number];
@@ -241,6 +253,28 @@ export const EVENT_TYPES = [
   "TAX_PAID",
   "TAX_EVADED",
   "ASSETS_SEIZED",
+  // Messaging events
+  "MESSAGE_SENT",
+  // GTA-like freedom events
+  "JAILBREAK_SUCCESS",
+  "JAILBREAK_FAILED",
+  "BRIBE_SUCCESS",
+  "BRIBE_FAILED",
+  "AGENT_ATTACKED",
+  "AGENT_KILLED",
+  "BOUNTY_PLACED",
+  "BOUNTY_CLAIMED",
+  "BOUNTY_EXPIRED",
+  "GAMBLE_WON",
+  "GAMBLE_LOST",
+  "DISGUISE_PURCHASED",
+  "DISGUISE_EXPIRED",
+  "VEHICLE_STOLEN",
+  "VEHICLE_STEAL_FAILED",
+  "CONTRACT_ACCEPTED",
+  "CONTRACT_COMPLETED",
+  "NPC_SPAWNED",
+  "NPC_ACTION",
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -341,6 +375,25 @@ export const ERROR_CODES = {
   // Tax error codes
   NO_TAX_DUE: "No tax currently owed",
   INSUFFICIENT_FUNDS_FOR_TAX: "Not enough cash to pay tax",
+  // GTA-like freedom error codes
+  NOT_JAILED: "Agent is not in jail",
+  HEAT_TOO_LOW: "Heat level too low for this action",
+  TARGET_NOT_IDLE: "Target agent is not idle",
+  TARGET_NOT_IN_ZONE: "Target agent not in same zone",
+  BOUNTY_TOO_LOW: "Bounty amount too low",
+  BOUNTY_TOO_HIGH: "Bounty amount too high",
+  NO_ACTIVE_BOUNTY: "No active bounty on target",
+  CANNOT_ATTACK_SELF: "Cannot attack yourself",
+  CANNOT_BOUNTY_SELF: "Cannot place bounty on yourself",
+  NO_VEHICLE_AVAILABLE: "No vehicle available in this zone",
+  ALREADY_HAS_VEHICLE: "Agent already has a vehicle",
+  NOT_IN_MARKET: "Must be in market zone for this action",
+  GAMBLE_TOO_LOW: "Bet amount too low",
+  GAMBLE_TOO_HIGH: "Bet amount too high",
+  INVALID_GAMBLE_TYPE: "Invalid gambling risk type",
+  INVALID_DISGUISE_TYPE: "Invalid disguise type",
+  NO_CONTRACT_AVAILABLE: "No contract available for this target",
+  CONTRACT_ALREADY_ACCEPTED: "Contract already accepted",
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_CODES;
@@ -670,4 +723,184 @@ export const SOCIAL_DEFAULTS = {
 
   // Coop crime expiration
   coopCrimeExpiration: 20, // Ticks before coop crime recruitment expires
+} as const;
+
+// ============================================================================
+// GTA-LIKE FREEDOM FEATURE CONSTANTS
+// ============================================================================
+
+/**
+ * Vehicle types for stealing and driving
+ */
+export const VEHICLE_TYPES = [
+  "motorcycle",
+  "car",
+  "sports_car",
+  "truck",
+  "van",
+] as const;
+
+export type VehicleType = (typeof VEHICLE_TYPES)[number];
+
+/**
+ * Disguise types for heat reduction
+ */
+export const DISGUISE_TYPES = ["basic", "professional", "elite"] as const;
+
+export type DisguiseType = (typeof DISGUISE_TYPES)[number];
+
+/**
+ * NPC behavior types
+ */
+export const NPC_BEHAVIOR_TYPES = [
+  "criminal",
+  "worker",
+  "trader",
+  "social",
+  "chaotic",
+] as const;
+
+export type NPCBehaviorType = (typeof NPC_BEHAVIOR_TYPES)[number];
+
+/**
+ * Gambling risk levels
+ */
+export const GAMBLE_RISK_TYPES = [
+  "lowRisk",
+  "medRisk",
+  "highRisk",
+  "jackpot",
+] as const;
+
+export type GambleRiskType = (typeof GAMBLE_RISK_TYPES)[number];
+
+/**
+ * GTA-like freedom feature defaults and configuration
+ */
+export const GTA_DEFAULTS = {
+  // ============================================================================
+  // JAILBREAK SETTINGS
+  // ============================================================================
+  jailbreakBaseSuccess: 0.20, // 20% base success rate
+  jailbreakCombatBonus: 0.03, // +3% per combat skill level
+  jailbreakFailureSentenceAdd: 50, // Ticks added to sentence on failure
+  jailbreakSuccessHeat: 20, // Heat gained on successful escape
+  jailbreakFailureHeat: 30, // Heat gained on failed attempt
+
+  // ============================================================================
+  // BRIBE SETTINGS
+  // ============================================================================
+  bribeCostPerHeat: 20, // $20 per heat point to bribe
+  bribeBaseSuccess: 0.60, // 60% base success rate
+  bribeNegotiationBonus: 0.05, // +5% per negotiation skill level
+  bribeFailureHeatAdd: 20, // Heat added on failed bribe
+  bribeMinHeat: 60, // Minimum heat required to bribe
+
+  // ============================================================================
+  // ATTACK/COMBAT SETTINGS
+  // ============================================================================
+  attackBaseDamage: { min: 15, max: 40 }, // Damage range
+  attackBaseSuccess: 0.50, // 50% base success rate
+  attackCombatBonus: 0.05, // +5% per combat skill level
+  attackHeat: 25, // Heat gained from attacking
+  attackCounterDamage: { min: 5, max: 15 }, // Counter-attack damage on failure
+  deathRespawnTicks: 100, // Ticks agent is hospitalized after death
+  deathCashLoss: 0.25, // 25% of cash lost on death
+
+  // ============================================================================
+  // BOUNTY SETTINGS
+  // ============================================================================
+  bountyMinAmount: 500, // Minimum bounty amount
+  bountyMaxAmount: 50000, // Maximum bounty amount
+  bountyDurationTicks: 500, // Ticks before bounty expires
+  bountyClaimHeat: 50, // Heat for claiming a bounty
+  bountyExpiredRefund: 0.50, // 50% refund if bounty expires
+
+  // ============================================================================
+  // GAMBLING SETTINGS
+  // ============================================================================
+  gambleMinAmount: 10, // Minimum bet
+  gambleMaxAmount: 5000, // Maximum bet
+  gambleOdds: {
+    lowRisk: { winChance: 0.45, multiplier: 2 }, // 45% chance for 2x
+    medRisk: { winChance: 0.30, multiplier: 3 }, // 30% chance for 3x
+    highRisk: { winChance: 0.15, multiplier: 5 }, // 15% chance for 5x
+    jackpot: { winChance: 0.05, multiplier: 10 }, // 5% chance for 10x
+  } as Record<GambleRiskType, { winChance: number; multiplier: number }>,
+
+  // ============================================================================
+  // DISGUISE SETTINGS
+  // ============================================================================
+  disguiseTypes: {
+    basic: { cost: 200, heatReduction: 2, durationTicks: 50 },
+    professional: { cost: 500, heatReduction: 4, durationTicks: 100 },
+    elite: { cost: 1500, heatReduction: 8, durationTicks: 200 },
+  } as Record<DisguiseType, { cost: number; heatReduction: number; durationTicks: number }>,
+
+  // ============================================================================
+  // VEHICLE SETTINGS
+  // ============================================================================
+  vehicleTypes: {
+    motorcycle: { speedBonus: 0.25, stealDifficulty: 0.70, value: 500 },
+    car: { speedBonus: 0.30, stealDifficulty: 0.50, value: 1000 },
+    sports_car: { speedBonus: 0.50, stealDifficulty: 0.30, value: 3000 },
+    truck: { speedBonus: 0.15, stealDifficulty: 0.60, value: 800 },
+    van: { speedBonus: 0.20, stealDifficulty: 0.55, value: 700 },
+  } as Record<VehicleType, { speedBonus: number; stealDifficulty: number; value: number }>,
+  vehicleStealHeat: 20, // Heat gained from stealing a vehicle
+  vehicleDrivingSkillBonus: 0.05, // +5% success per driving skill level
+  vehicleConditionDecay: 1, // Condition decay per tick when driving
+
+  // ============================================================================
+  // NPC SETTINGS
+  // ============================================================================
+  npcActionInterval: 5, // Ticks between NPC actions
+  npcMaxPerWorld: 50, // Maximum NPCs in the world
+
+  // NPC personality ranges (0-100)
+  npcPersonalityDefaults: {
+    criminal: { aggression: 70, greed: 80, caution: 30, loyalty: 20, sociability: 40 },
+    worker: { aggression: 20, greed: 50, caution: 60, loyalty: 60, sociability: 50 },
+    trader: { aggression: 30, greed: 90, caution: 70, loyalty: 40, sociability: 70 },
+    social: { aggression: 20, greed: 40, caution: 50, loyalty: 80, sociability: 90 },
+    chaotic: { aggression: 80, greed: 60, caution: 10, loyalty: 10, sociability: 50 },
+  } as Record<NPCBehaviorType, { aggression: number; greed: number; caution: number; loyalty: number; sociability: number }>,
+
+  // Action weights by behavior type (higher = more likely to choose)
+  npcActionWeights: {
+    criminal: {
+      COMMIT_CRIME: 40,
+      ROB_AGENT: 25,
+      ATTACK_AGENT: 20,
+      MOVE: 10,
+      REST: 5,
+    },
+    worker: {
+      TAKE_JOB: 50,
+      REST: 20,
+      MOVE: 20,
+      BUY: 10,
+    },
+    trader: {
+      BUY: 35,
+      SELL: 35,
+      MOVE: 20,
+      TAKE_JOB: 10,
+    },
+    social: {
+      SEND_FRIEND_REQUEST: 25,
+      GIFT_CASH: 20,
+      MOVE: 25,
+      REST: 15,
+      TAKE_JOB: 15,
+    },
+    chaotic: {
+      GAMBLE: 25,
+      ATTACK_AGENT: 20,
+      COMMIT_CRIME: 20,
+      MOVE: 15,
+      STEAL_VEHICLE: 10,
+      PLACE_BOUNTY: 10,
+    },
+  } as Record<NPCBehaviorType, Record<string, number>>,
 } as const;

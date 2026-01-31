@@ -26,6 +26,7 @@ import {
   ClockIcon,
   ShieldAlertIcon,
   PackageIcon,
+  MessageSquareIcon,
 } from "lucide-react";
 
 function getStatusBadgeVariant(
@@ -129,6 +130,12 @@ export default function AgentDetailPage() {
               <Badge variant="outline">{profile.gang.role}</Badge>
             </div>
           )}
+          <Link href={`/messages?selected=${agentId}`}>
+            <Button variant="outline" size="sm">
+              <MessageSquareIcon className="size-4 mr-2" />
+              Message
+            </Button>
+          </Link>
         </div>
 
         {/* Busy Action Alert */}

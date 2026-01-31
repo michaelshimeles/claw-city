@@ -25,6 +25,8 @@ import type * as lib_nicknames from "../lib/nicknames.js";
 import type * as lib_rng from "../lib/rng.js";
 import type * as lib_tax from "../lib/tax.js";
 import type * as map from "../map.js";
+import type * as messages from "../messages.js";
+import type * as npc from "../npc.js";
 import type * as seed from "../seed.js";
 import type * as skillDocs from "../skillDocs.js";
 import type * as social from "../social.js";
@@ -57,6 +59,8 @@ declare const fullApi: ApiFromModules<{
   "lib/rng": typeof lib_rng;
   "lib/tax": typeof lib_tax;
   map: typeof map;
+  messages: typeof messages;
+  npc: typeof npc;
   seed: typeof seed;
   skillDocs: typeof skillDocs;
   social: typeof social;

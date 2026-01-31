@@ -76,6 +76,17 @@ export default defineSchema({
     taxDueTick: v.optional(v.number()), // When next tax assessment happens
     taxOwed: v.optional(v.number()), // Amount currently owed
     taxGracePeriodEnd: v.optional(v.number()), // Deadline to pay
+    // GTA-like freedom features
+    vehicleId: v.optional(v.id("vehicles")), // Currently owned/stolen vehicle
+    isNPC: v.optional(v.boolean()), // Whether this agent is an NPC bot
+    combatStats: v.optional(
+      v.object({
+        kills: v.number(),
+        deaths: v.number(),
+        bountiesClaimed: v.number(),
+        bountiesPlaced: v.number(),
+      })
+    ),
   })
     .index("by_agentKeyHash", ["agentKeyHash"])
     .index("by_status", ["status"])
@@ -348,6 +359,102 @@ export default defineSchema({
     totalSeizedCash: v.number(),
     totalSeizedItems: v.number(),
   }),
+
+  // ============================================================================
+  // GTA-LIKE FREEDOM FEATURES TABLES
+  // ============================================================================
+
+  // Bounties - Player-placed bounties on other agents
+  bounties: defineTable({
+    targetAgentId: v.id("agents"),
+    placedByAgentId: v.id("agents"),
+    amount: v.number(),
+    reason: v.optional(v.string()),
+    status: v.union(v.literal("active"), v.literal("claimed"), v.literal("expired")),
+    claimedByAgentId: v.optional(v.id("agents")),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+  })
+    .index("by_targetAgentId", ["targetAgentId"])
+    .index("by_status", ["status"])
+    .index("by_placedByAgentId", ["placedByAgentId"]),
+
+  // Vehicles - Stealable vehicles for travel speed bonus
+  vehicles: defineTable({
+    type: v.union(
+      v.literal("motorcycle"),
+      v.literal("car"),
+      v.literal("sports_car"),
+      v.literal("truck"),
+      v.literal("van")
+    ),
+    name: v.string(),
+    ownerId: v.optional(v.id("agents")),
+    zoneId: v.id("zones"),
+    isStolen: v.boolean(),
+    condition: v.number(), // 0-100
+    speedBonus: v.number(), // Percentage bonus to travel speed
+    value: v.number(),
+  })
+    .index("by_ownerId", ["ownerId"])
+    .index("by_zoneId", ["zoneId"]),
+
+  // Disguises - Temporary heat reduction effects
+  disguises: defineTable({
+    agentId: v.id("agents"),
+    type: v.union(v.literal("basic"), v.literal("professional"), v.literal("elite")),
+    heatReduction: v.number(),
+    expiresAtTick: v.number(),
+  }).index("by_agentId", ["agentId"]),
+
+  // NPC Agents - Bot agents with personalities that auto-act
+  npcAgents: defineTable({
+    agentId: v.id("agents"),
+    personality: v.object({
+      aggression: v.number(), // 0-100
+      greed: v.number(), // 0-100
+      caution: v.number(), // 0-100
+      loyalty: v.number(), // 0-100
+      sociability: v.number(), // 0-100
+    }),
+    behaviorType: v.union(
+      v.literal("criminal"),
+      v.literal("worker"),
+      v.literal("trader"),
+      v.literal("social"),
+      v.literal("chaotic")
+    ),
+    isActive: v.boolean(),
+    lastActionTick: v.number(),
+  })
+    .index("by_agentId", ["agentId"])
+    .index("by_isActive", ["isActive"]),
+
+  // Contracts - Assassination contracts for agents
+  contracts: defineTable({
+    targetAgentId: v.id("agents"),
+    reward: v.number(),
+    acceptedByAgentId: v.optional(v.id("agents")),
+    status: v.union(v.literal("available"), v.literal("accepted"), v.literal("completed"), v.literal("expired")),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+  })
+    .index("by_targetAgentId", ["targetAgentId"])
+    .index("by_status", ["status"])
+    .index("by_acceptedByAgentId", ["acceptedByAgentId"]),
+
+  // Messages - Agent-to-agent direct messages
+  messages: defineTable({
+    senderId: v.id("agents"),
+    recipientId: v.id("agents"),
+    content: v.string(),
+    read: v.boolean(),
+    tick: v.number(),
+    timestamp: v.number(),
+  })
+    .index("by_recipientId", ["recipientId"])
+    .index("by_senderId", ["senderId"])
+    .index("by_recipientId_read", ["recipientId", "read"]),
 
   // Cooperative actions - Multi-agent actions in progress
   coopActions: defineTable({

@@ -50,6 +50,10 @@ type RentResult = { payments: number; evictions: number };
 type CoopResult = { executed: number; cancelled: number };
 type FriendshipResult = { decayed: number; removed: number };
 type TaxResult = { assessed: number; paid: number; evaded: number };
+type BountyResult = { expired: number; refunded: number };
+type DisguiseResult = { expired: number };
+type JailReleaseResult = { released: number };
+type NPCResult = { processed: number };
 
 type TickRunResult =
   | { skipped: true; reason: string }
@@ -66,6 +70,10 @@ type TickRunResult =
       taxesAssessed: number;
       taxesPaid: number;
       taxEvaders: number;
+      bountiesExpired: number;
+      disguisesExpired: number;
+      jailedReleased: number;
+      npcActionsProcessed: number;
     };
 
 // ============================================================================
@@ -118,7 +126,18 @@ async function runTickHandler(ctx: ActionCtx): Promise<TickRunResult> {
     tick: tickResult.tick,
   });
 
-  // 11. Log tick event
+  // 11. Process GTA-like features
+  const bountyResult: BountyResult = await ctx.runMutation(internal.tickHelpers.processBountyExpiration);
+  const disguiseResult: DisguiseResult = await ctx.runMutation(internal.tickHelpers.processDisguiseExpiration);
+  const jailReleaseResult: JailReleaseResult = await ctx.runMutation(internal.tickHelpers.releaseJailedAgents);
+
+  // 12. Process NPC actions
+  const npcResult: NPCResult = await ctx.runMutation(internal.npc.processNPCActions, {
+    seed: tickResult.seed,
+    tick: tickResult.tick,
+  });
+
+  // 13. Log tick event
   await ctx.runMutation(internal.tickHelpers.logTickEvent, {
     tick: tickResult.tick,
     resolvedAgents: busyResult.resolved,
@@ -146,6 +165,10 @@ async function runTickHandler(ctx: ActionCtx): Promise<TickRunResult> {
     taxesAssessed: taxResult.assessed,
     taxesPaid: taxResult.paid,
     taxEvaders: taxResult.evaded,
+    bountiesExpired: bountyResult.expired,
+    disguisesExpired: disguiseResult.expired,
+    jailedReleased: jailReleaseResult.released,
+    npcActionsProcessed: npcResult.processed,
   };
 }
 

@@ -20,6 +20,19 @@ const CRIME_EVENTS = [
   "COOP_CRIME_FAILED",
   "AGENT_ROBBED",
   "ROB_ATTEMPT_FAILED",
+  // GTA-like features
+  "JAILBREAK_SUCCESS",
+  "JAILBREAK_FAILED",
+  "BRIBE_SUCCESS",
+  "BRIBE_FAILED",
+  "AGENT_ATTACKED",
+  "AGENT_KILLED",
+  "BOUNTY_PLACED",
+  "BOUNTY_CLAIMED",
+  "BOUNTY_EXPIRED",
+  "VEHICLE_STOLEN",
+  "CONTRACT_ACCEPTED",
+  "NPC_ACTION",
 ];
 
 const SOCIAL_EVENTS = [
@@ -47,6 +60,11 @@ const ECONOMIC_EVENTS = [
   "PROPERTY_RENTED",
   "TERRITORY_CLAIMED",
   "TERRITORY_INCOME",
+  // GTA-like features
+  "GAMBLE_WON",
+  "GAMBLE_LOST",
+  "DISGUISE_PURCHASED",
+  "DISGUISE_EXPIRED",
 ];
 
 /**
@@ -330,6 +348,41 @@ function formatEventDescription(
       return `${agent} purchased property in ${zone}`;
     case "BUSINESS_STARTED":
       return `${agent} started a business in ${zone}`;
+    // GTA-like features
+    case "JAILBREAK_SUCCESS":
+      return `${agent} escaped from jail!`;
+    case "JAILBREAK_FAILED":
+      return `${agent} failed to escape and got more time`;
+    case "BRIBE_SUCCESS":
+      return `${agent} bribed the cops`;
+    case "BRIBE_FAILED":
+      return `${agent}'s bribe attempt backfired`;
+    case "AGENT_ATTACKED":
+      return `${agent} attacked ${p?.targetName ?? "another agent"} in ${zone}`;
+    case "AGENT_KILLED":
+      return `${agent} killed ${p?.targetName ?? "another agent"} in ${zone}!`;
+    case "BOUNTY_PLACED":
+      return `$${p?.amount ?? "?"} bounty placed on ${p?.targetName ?? "an agent"}`;
+    case "BOUNTY_CLAIMED":
+      return `${agent} claimed the bounty on ${p?.targetName ?? "an agent"}`;
+    case "BOUNTY_EXPIRED":
+      return `Bounty on ${p?.targetName ?? "an agent"} has expired`;
+    case "GAMBLE_WON":
+      return `${agent} won $${p?.winnings ?? "?"} gambling!`;
+    case "GAMBLE_LOST":
+      return `${agent} lost $${p?.amount ?? "?"} gambling`;
+    case "DISGUISE_PURCHASED":
+      return `${agent} bought a ${p?.type ?? ""} disguise`;
+    case "DISGUISE_EXPIRED":
+      return `${agent}'s disguise wore off`;
+    case "VEHICLE_STOLEN":
+      return `${agent} stole a ${p?.vehicleType ?? "vehicle"} in ${zone}`;
+    case "CONTRACT_ACCEPTED":
+      return `${agent} accepted a hit contract`;
+    case "NPC_SPAWNED":
+      return `NPC ${agent} entered the city`;
+    case "NPC_ACTION":
+      return `NPC ${agent} performed an action`;
     default:
       return `${agent}: ${type.replace(/_/g, " ").toLowerCase()}`;
   }

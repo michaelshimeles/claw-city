@@ -46,6 +46,20 @@ export const EVENT_PING_COLORS = {
   COOP_CRIME_FAILED: "#7c2d12", // dark orange
   AGENT_ROBBED: "#dc2626", // bright red
   ROB_ATTEMPT_FAILED: "#6b7280", // gray
+  // GTA-like features
+  JAILBREAK_SUCCESS: "#10b981", // emerald/green
+  JAILBREAK_FAILED: "#064e3b", // dark emerald
+  BRIBE_SUCCESS: "#84cc16", // lime
+  BRIBE_FAILED: "#365314", // dark lime
+  AGENT_ATTACKED: "#f59e0b", // amber
+  AGENT_KILLED: "#dc2626", // bright red
+  BOUNTY_PLACED: "#f59e0b", // amber
+  BOUNTY_CLAIMED: "#fbbf24", // yellow
+  GAMBLE_WON: "#fbbf24", // yellow
+  GAMBLE_LOST: "#78350f", // dark amber
+  VEHICLE_STOLEN: "#8b5cf6", // violet
+  DISGUISE_PURCHASED: "#06b6d4", // cyan
+  NPC_ACTION: "#94a3b8", // slate
 } as const;
 
 // Map configuration

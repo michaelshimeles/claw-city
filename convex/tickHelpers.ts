@@ -1193,3 +1193,253 @@ export const processTaxes = internalMutation({
     return { assessed, paid, evaded };
   },
 });
+
+// ============================================================================
+// GTA-LIKE FREEDOM FEATURE TICK PROCESSORS
+// ============================================================================
+
+import { GTA_DEFAULTS } from "./lib/constants";
+
+/**
+ * Process bounty expiration - expire old bounties and refund 50%
+ */
+export const processBountyExpiration = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const world = await ctx.db.query("world").first();
+    if (!world) {
+      return { expired: 0, refunded: 0 };
+    }
+
+    const currentTick = world.tick;
+
+    // Find all active bounties
+    const activeBounties = await ctx.db
+      .query("bounties")
+      .withIndex("by_status", (q) => q.eq("status", "active"))
+      .collect();
+
+    let expired = 0;
+    let totalRefunded = 0;
+
+    for (const bounty of activeBounties) {
+      if (bounty.expiresAt <= currentTick) {
+        // Expire the bounty
+        await ctx.db.patch(bounty._id, { status: "expired" });
+
+        // Refund 50% to placer
+        const refundAmount = Math.floor(bounty.amount * GTA_DEFAULTS.bountyExpiredRefund);
+        const placer = await ctx.db.get(bounty.placedByAgentId);
+
+        if (placer && refundAmount > 0) {
+          await ctx.db.patch(placer._id, { cash: placer.cash + refundAmount });
+
+          // Log refund in ledger
+          await ctx.db.insert("ledger", {
+            tick: currentTick,
+            agentId: placer._id,
+            type: "credit",
+            amount: refundAmount,
+            reason: "BOUNTY_EXPIRED_REFUND",
+            balance: placer.cash + refundAmount,
+            refEventId: null,
+          });
+
+          totalRefunded += refundAmount;
+        }
+
+        // Get target name for event
+        const target = await ctx.db.get(bounty.targetAgentId);
+
+        // Log expiration event
+        await ctx.db.insert("events", {
+          tick: currentTick,
+          timestamp: Date.now(),
+          type: "BOUNTY_EXPIRED",
+          agentId: bounty.placedByAgentId,
+          zoneId: null,
+          entityId: bounty._id,
+          payload: {
+            targetAgentId: bounty.targetAgentId,
+            targetAgentName: target?.name,
+            originalAmount: bounty.amount,
+            refundAmount,
+          },
+          requestId: null,
+        });
+
+        expired++;
+      }
+    }
+
+    return { expired, refunded: totalRefunded };
+  },
+});
+
+/**
+ * Process disguise expiration - remove expired disguises
+ */
+export const processDisguiseExpiration = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const world = await ctx.db.query("world").first();
+    if (!world) {
+      return { expired: 0 };
+    }
+
+    const currentTick = world.tick;
+
+    // Find all disguises
+    const disguises = await ctx.db.query("disguises").collect();
+
+    let expired = 0;
+
+    for (const disguise of disguises) {
+      if (disguise.expiresAtTick <= currentTick) {
+        // Get agent for event logging
+        const agent = await ctx.db.get(disguise.agentId);
+
+        // Delete the disguise
+        await ctx.db.delete(disguise._id);
+
+        // Log expiration event
+        await ctx.db.insert("events", {
+          tick: currentTick,
+          timestamp: Date.now(),
+          type: "DISGUISE_EXPIRED",
+          agentId: disguise.agentId,
+          zoneId: agent?.locationZoneId ?? null,
+          entityId: null,
+          payload: {
+            disguiseType: disguise.type,
+            heatReduction: disguise.heatReduction,
+          },
+          requestId: null,
+        });
+
+        expired++;
+      }
+    }
+
+    return { expired };
+  },
+});
+
+/**
+ * Process heat decay with disguise bonus
+ * This replaces the basic processHeatDecay to account for disguises
+ */
+export const processHeatDecayWithDisguise = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const world = await ctx.db.query("world").first();
+    if (!world) {
+      return { processed: 0 };
+    }
+
+    const { heatDecayIdle, heatDecayBusy } = world.config;
+
+    // Get all agents
+    const agents = await ctx.db.query("agents").collect();
+
+    // Get all active disguises for quick lookup
+    const disguises = await ctx.db.query("disguises").collect();
+    const disguiseByAgentId: Record<string, { heatReduction: number }> = {};
+    for (const disguise of disguises) {
+      if (disguise.expiresAtTick > world.tick) {
+        disguiseByAgentId[disguise.agentId.toString()] = {
+          heatReduction: disguise.heatReduction,
+        };
+      }
+    }
+
+    let processedCount = 0;
+
+    for (const agent of agents) {
+      if (agent.heat > 0) {
+        // Determine base decay rate based on status
+        let decayRate =
+          agent.status === "idle" || agent.status === "jailed" || agent.status === "hospitalized"
+            ? heatDecayIdle
+            : heatDecayBusy;
+
+        // Add disguise bonus if active
+        const disguise = disguiseByAgentId[agent._id.toString()];
+        if (disguise) {
+          decayRate += disguise.heatReduction;
+        }
+
+        // Apply decay (minimum 0)
+        const newHeat = Math.max(0, agent.heat - decayRate);
+
+        if (newHeat !== agent.heat) {
+          await ctx.db.patch(agent._id, {
+            heat: newHeat,
+          });
+          processedCount++;
+        }
+      }
+    }
+
+    return { processed: processedCount };
+  },
+});
+
+/**
+ * Release jailed agents whose sentences have expired
+ */
+export const releaseJailedAgents = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const world = await ctx.db.query("world").first();
+    if (!world) {
+      return { released: 0 };
+    }
+
+    const currentTick = world.tick;
+
+    // Find all jailed agents
+    const jailedAgents = await ctx.db
+      .query("agents")
+      .withIndex("by_status", (q) => q.eq("status", "jailed"))
+      .collect();
+
+    // Get residential zone for release
+    const residentialZone = await ctx.db
+      .query("zones")
+      .withIndex("by_slug", (q) => q.eq("slug", "residential"))
+      .first();
+
+    let released = 0;
+
+    for (const agent of jailedAgents) {
+      if (agent.busyUntilTick !== null && agent.busyUntilTick <= currentTick) {
+        // Release the agent
+        await ctx.db.patch(agent._id, {
+          status: "idle",
+          busyUntilTick: null,
+          busyAction: null,
+          locationZoneId: residentialZone?._id ?? agent.locationZoneId,
+        });
+
+        // Log release event
+        await ctx.db.insert("events", {
+          tick: currentTick,
+          timestamp: Date.now(),
+          type: "AGENT_RELEASED",
+          agentId: agent._id,
+          zoneId: residentialZone?._id ?? null,
+          entityId: null,
+          payload: {
+            reason: agent.busyAction,
+          },
+          requestId: null,
+        });
+
+        released++;
+      }
+    }
+
+    return { released };
+  },
+});
