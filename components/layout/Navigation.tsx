@@ -8,6 +8,7 @@ import { api } from "@/convex/_generated/api";
 const navLinks = [
   { href: "/", label: "Dashboard" },
   { href: "/agents", label: "Agents" },
+  { href: "/gangs", label: "Gangs" },
   { href: "/world", label: "World" },
   { href: "/events", label: "Events" },
   { href: "/info", label: "Info" },

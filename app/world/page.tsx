@@ -16,6 +16,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+type TerritoryInfo = {
+  gangId: string;
+  gangName: string;
+  gangTag: string;
+  gangColor: string;
+  controlStrength: number;
+  incomePerTick: number;
+  isContestable: boolean;
+};
+
 // Zone type color mapping
 const zoneTypeStyles: Record<string, { bg: string; border: string; badge: string }> = {
   commercial: {
@@ -42,6 +52,7 @@ const zoneTypeStyles: Record<string, { bg: string; border: string; badge: string
 
 function ZoneCard({
   zone,
+  territory,
   isSelected,
   onClick,
 }: {
@@ -55,6 +66,7 @@ function ZoneCard({
     jobCount: number;
     businessCount: number;
   };
+  territory?: TerritoryInfo;
   isSelected: boolean;
   onClick: () => void;
 }) {
@@ -63,20 +75,73 @@ function ZoneCard({
   return (
     <Card
       className={cn(
-        "cursor-pointer transition-all border-2",
+        "cursor-pointer transition-all border-2 relative overflow-hidden",
         styles.bg,
         styles.border,
         isSelected && "ring-2 ring-offset-2 ring-offset-background ring-primary"
       )}
       onClick={onClick}
     >
+      {/* Territory Control Overlay */}
+      {territory && (
+        <div
+          className="absolute top-0 left-0 h-1 transition-all"
+          style={{
+            width: `${territory.controlStrength}%`,
+            backgroundColor: territory.gangColor,
+          }}
+        />
+      )}
       <CardHeader>
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="text-base">{zone.name}</CardTitle>
-          <Badge className={cn("capitalize", styles.badge)}>{zone.type}</Badge>
+          <div className="flex items-center gap-1.5">
+            {territory && (
+              <Badge
+                variant="outline"
+                className="text-[10px]"
+                style={{
+                  borderColor: territory.gangColor,
+                  color: territory.gangColor,
+                }}
+              >
+                [{territory.gangTag}]
+              </Badge>
+            )}
+            <Badge className={cn("capitalize", styles.badge)}>{zone.type}</Badge>
+          </div>
         </div>
         <CardDescription className="line-clamp-2">{zone.description}</CardDescription>
       </CardHeader>
+      {/* Territory Info */}
+      {territory && (
+        <CardContent className="pt-0 pb-2">
+          <div className="flex items-center gap-2 text-xs">
+            <div
+              className="w-2 h-2 rounded-full"
+              style={{ backgroundColor: territory.gangColor }}
+            />
+            <span className="font-medium">{territory.gangName}</span>
+            <span className="text-muted-foreground">•</span>
+            <span
+              className={cn(
+                territory.controlStrength >= 75 && "text-green-600 dark:text-green-400",
+                territory.controlStrength >= 50 &&
+                  territory.controlStrength < 75 &&
+                  "text-yellow-600 dark:text-yellow-400",
+                territory.controlStrength < 50 && "text-red-600 dark:text-red-400"
+              )}
+            >
+              {territory.controlStrength}% control
+            </span>
+            {territory.isContestable && (
+              <Badge variant="destructive" className="text-[9px] h-4">
+                Contestable
+              </Badge>
+            )}
+          </div>
+        </CardContent>
+      )}
       <CardFooter className="gap-4 text-xs">
         <div className="flex items-center gap-1.5">
           <span className="text-muted-foreground">Agents:</span>
@@ -316,8 +381,10 @@ function MarketPricesTable() {
 
 export default function WorldPage() {
   const zones = useQuery(api.zones.getZones);
+  const territoriesByZone = useQuery(api.gangs.getTerritoriesByZone);
   const [selectedZoneId, setSelectedZoneId] = useState<Id<"zones"> | null>(null);
   const [showMarketPrices, setShowMarketPrices] = useState(false);
+  const [showTerritories, setShowTerritories] = useState(true);
 
   if (!zones) {
     return (
@@ -326,6 +393,10 @@ export default function WorldPage() {
       </div>
     );
   }
+
+  const territoryCount = territoriesByZone
+    ? Object.keys(territoriesByZone).length
+    : 0;
 
   return (
     <div className="min-h-screen bg-background px-4 py-6">
@@ -336,15 +407,25 @@ export default function WorldPage() {
             <h1 className="text-xl font-semibold">World / Zones</h1>
             <p className="text-sm text-muted-foreground">
               Manage and monitor the {zones.length} zones of ClawCity
+              {territoryCount > 0 && ` • ${territoryCount} controlled by gangs`}
             </p>
           </div>
-          <Button
-            variant={showMarketPrices ? "default" : "outline"}
-            size="sm"
-            onClick={() => setShowMarketPrices(!showMarketPrices)}
-          >
-            {showMarketPrices ? "Hide Market Prices" : "Show Market Prices"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant={showTerritories ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowTerritories(!showTerritories)}
+            >
+              {showTerritories ? "Hide Territories" : "Show Territories"}
+            </Button>
+            <Button
+              variant={showMarketPrices ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowMarketPrices(!showMarketPrices)}
+            >
+              {showMarketPrices ? "Hide Market Prices" : "Show Market Prices"}
+            </Button>
+          </div>
         </div>
         {/* Market Prices Table (optional) */}
         {showMarketPrices && (
@@ -372,6 +453,11 @@ export default function WorldPage() {
                 <ZoneCard
                   key={zone._id}
                   zone={zone}
+                  territory={
+                    showTerritories && territoriesByZone
+                      ? territoriesByZone[zone._id]
+                      : undefined
+                  }
                   isSelected={selectedZoneId === zone._id}
                   onClick={() =>
                     setSelectedZoneId(selectedZoneId === zone._id ? null : zone._id)

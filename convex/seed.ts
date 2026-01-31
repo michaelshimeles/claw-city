@@ -485,6 +485,197 @@ interface BusinessData {
   inventory: { itemSlug: string; qty: number; price: number }[];
 }
 
+// ============================================================================
+// PROPERTIES SEED DATA
+// ============================================================================
+
+interface PropertyData {
+  zoneSlug: string;
+  name: string;
+  type: "apartment" | "house" | "safehouse" | "penthouse" | "warehouse";
+  buyPrice: number;
+  rentPrice: number;
+  heatReduction: number;
+  staminaBoost: number;
+  capacity: number;
+  features?: string[];
+}
+
+const PROPERTIES_DATA: PropertyData[] = [
+  // Residential district - affordable housing
+  {
+    zoneSlug: "residential",
+    name: "Starter Apartment #101",
+    type: "apartment",
+    buyPrice: 2000,
+    rentPrice: 100,
+    heatReduction: 10,
+    staminaBoost: 10,
+    capacity: 2,
+  },
+  {
+    zoneSlug: "residential",
+    name: "Starter Apartment #202",
+    type: "apartment",
+    buyPrice: 2000,
+    rentPrice: 100,
+    heatReduction: 10,
+    staminaBoost: 10,
+    capacity: 2,
+  },
+  {
+    zoneSlug: "residential",
+    name: "Family Home",
+    type: "house",
+    buyPrice: 5000,
+    rentPrice: 250,
+    heatReduction: 20,
+    staminaBoost: 15,
+    capacity: 4,
+    features: ["backyard", "garage"],
+  },
+
+  // Suburbs - quiet and safe
+  {
+    zoneSlug: "suburbs",
+    name: "Suburban House",
+    type: "house",
+    buyPrice: 6000,
+    rentPrice: 300,
+    heatReduction: 25,
+    staminaBoost: 20,
+    capacity: 4,
+    features: ["pool", "garage"],
+  },
+  {
+    zoneSlug: "suburbs",
+    name: "Cozy Cottage",
+    type: "house",
+    buyPrice: 4500,
+    rentPrice: 225,
+    heatReduction: 20,
+    staminaBoost: 15,
+    capacity: 3,
+  },
+
+  // Downtown - expensive but central
+  {
+    zoneSlug: "downtown",
+    name: "Skyline Penthouse",
+    type: "penthouse",
+    buyPrice: 25000,
+    rentPrice: 1000,
+    heatReduction: 30,
+    staminaBoost: 25,
+    capacity: 4,
+    features: ["helipad", "hot_tub", "city_view"],
+  },
+  {
+    zoneSlug: "downtown",
+    name: "Executive Suite",
+    type: "penthouse",
+    buyPrice: 20000,
+    rentPrice: 800,
+    heatReduction: 25,
+    staminaBoost: 20,
+    capacity: 3,
+    features: ["city_view"],
+  },
+  {
+    zoneSlug: "downtown",
+    name: "Downtown Apartment",
+    type: "apartment",
+    buyPrice: 3500,
+    rentPrice: 175,
+    heatReduction: 10,
+    staminaBoost: 10,
+    capacity: 2,
+  },
+
+  // Industrial - warehouses for gangs
+  {
+    zoneSlug: "industrial",
+    name: "Storage Warehouse A",
+    type: "warehouse",
+    buyPrice: 8000,
+    rentPrice: 400,
+    heatReduction: 10,
+    staminaBoost: 0,
+    capacity: 8,
+    features: ["loading_dock"],
+  },
+  {
+    zoneSlug: "industrial",
+    name: "Storage Warehouse B",
+    type: "warehouse",
+    buyPrice: 8000,
+    rentPrice: 400,
+    heatReduction: 10,
+    staminaBoost: 0,
+    capacity: 8,
+    features: ["loading_dock"],
+  },
+
+  // Docks - safehouses for criminals
+  {
+    zoneSlug: "docks",
+    name: "Harbor Safehouse",
+    type: "safehouse",
+    buyPrice: 10000,
+    rentPrice: 500,
+    heatReduction: 50,
+    staminaBoost: 10,
+    capacity: 6,
+    features: ["hidden_entrance", "escape_route"],
+  },
+  {
+    zoneSlug: "docks",
+    name: "Shipping Container Hideout",
+    type: "safehouse",
+    buyPrice: 7500,
+    rentPrice: 375,
+    heatReduction: 45,
+    staminaBoost: 5,
+    capacity: 4,
+    features: ["hidden_entrance"],
+  },
+  {
+    zoneSlug: "docks",
+    name: "Dockside Warehouse",
+    type: "warehouse",
+    buyPrice: 9000,
+    rentPrice: 450,
+    heatReduction: 15,
+    staminaBoost: 0,
+    capacity: 10,
+    features: ["loading_dock", "boat_access"],
+  },
+
+  // Market - mixed
+  {
+    zoneSlug: "market",
+    name: "Market Loft",
+    type: "apartment",
+    buyPrice: 3000,
+    rentPrice: 150,
+    heatReduction: 10,
+    staminaBoost: 10,
+    capacity: 2,
+    features: ["market_access"],
+  },
+  {
+    zoneSlug: "market",
+    name: "Trader's House",
+    type: "house",
+    buyPrice: 5500,
+    rentPrice: 275,
+    heatReduction: 15,
+    staminaBoost: 15,
+    capacity: 4,
+    features: ["basement_storage"],
+  },
+];
+
 const BUSINESSES_DATA: BusinessData[] = [
   // Market businesses (main shopping district)
   {
@@ -754,6 +945,53 @@ export const seedJobs = internalMutation({
 });
 
 /**
+ * Seed properties into the database
+ */
+export const seedProperties = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    // Check if properties already exist
+    const existingProperties = await ctx.db.query("properties").collect();
+    if (existingProperties.length > 0) {
+      console.log("Properties already seeded, skipping...");
+      return { seeded: false, count: existingProperties.length };
+    }
+
+    // Get all zones to build slug -> ID mapping
+    const zones = await ctx.db.query("zones").collect();
+    const zoneIdBySlug: Record<string, Id<"zones">> = {};
+    for (const zone of zones) {
+      zoneIdBySlug[zone.slug] = zone._id;
+    }
+
+    let count = 0;
+    for (const property of PROPERTIES_DATA) {
+      const zoneId = zoneIdBySlug[property.zoneSlug];
+      if (!zoneId) {
+        console.warn(`Skipping property "${property.name}": zone ${property.zoneSlug} not found`);
+        continue;
+      }
+
+      await ctx.db.insert("properties", {
+        zoneId,
+        name: property.name,
+        type: property.type,
+        buyPrice: property.buyPrice,
+        rentPrice: property.rentPrice,
+        heatReduction: property.heatReduction,
+        staminaBoost: property.staminaBoost,
+        capacity: property.capacity,
+        features: property.features,
+      });
+      count++;
+    }
+
+    console.log(`Seeded ${count} properties`);
+    return { seeded: true, count };
+  },
+});
+
+/**
  * Seed NPC businesses into the database
  */
 export const seedBusinesses = internalMutation({
@@ -1015,6 +1253,33 @@ export const seedAll = internalMutation({
       results.businesses = { seeded: false, count: existingBusinesses.length, reason: "already exists" };
     }
 
+    // 7. Properties (depends on zones)
+    const existingProperties = await ctx.db.query("properties").collect();
+    if (existingProperties.length === 0) {
+      let propertyCount = 0;
+      for (const property of PROPERTIES_DATA) {
+        const zoneId = zoneIdBySlug[property.zoneSlug];
+        if (!zoneId) continue;
+
+        await ctx.db.insert("properties", {
+          zoneId,
+          name: property.name,
+          type: property.type,
+          buyPrice: property.buyPrice,
+          rentPrice: property.rentPrice,
+          heatReduction: property.heatReduction,
+          staminaBoost: property.staminaBoost,
+          capacity: property.capacity,
+          features: property.features,
+        });
+        propertyCount++;
+      }
+      results.properties = { seeded: true, count: propertyCount };
+      console.log(`Seeded ${propertyCount} properties`);
+    } else {
+      results.properties = { seeded: false, count: existingProperties.length, reason: "already exists" };
+    }
+
     console.log("Seed complete!", results);
     return results;
   },
@@ -1232,6 +1497,32 @@ export const initializeWorld = mutation({
       results.businesses = { seeded: true, count: businessCount };
     } else {
       results.businesses = { seeded: false, count: existingBusinesses.length };
+    }
+
+    // 7. Properties (depends on zones)
+    const existingProperties = await ctx.db.query("properties").collect();
+    if (existingProperties.length === 0) {
+      let propertyCount = 0;
+      for (const property of PROPERTIES_DATA) {
+        const zoneId = zoneIdBySlug[property.zoneSlug];
+        if (!zoneId) continue;
+
+        await ctx.db.insert("properties", {
+          zoneId,
+          name: property.name,
+          type: property.type,
+          buyPrice: property.buyPrice,
+          rentPrice: property.rentPrice,
+          heatReduction: property.heatReduction,
+          staminaBoost: property.staminaBoost,
+          capacity: property.capacity,
+          features: property.features,
+        });
+        propertyCount++;
+      }
+      results.properties = { seeded: true, count: propertyCount };
+    } else {
+      results.properties = { seeded: false, count: existingProperties.length };
     }
 
     return results;

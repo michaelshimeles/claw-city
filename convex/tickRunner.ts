@@ -41,6 +41,10 @@ type TickResult = {
 type BusyResult = { resolved: number };
 type HeatResult = { processed: number };
 type ArrestResult = { arrests: number; checks: number };
+type TerritoryResult = { processed: number; totalIncome: number; decayed: number };
+type RentResult = { payments: number; evictions: number };
+type CoopResult = { executed: number; cancelled: number };
+type FriendshipResult = { decayed: number; removed: number };
 
 type TickRunResult =
   | { skipped: true; reason: string }
@@ -51,6 +55,9 @@ type TickRunResult =
       heatDecayProcessed: number;
       arrests: number;
       arrestChecks: number;
+      territoryIncome: number;
+      rentPayments: number;
+      coopActionsProcessed: number;
     };
 
 // ============================================================================
@@ -82,13 +89,31 @@ async function runTickHandler(ctx: ActionCtx): Promise<TickRunResult> {
     tick: tickResult.tick,
   });
 
-  // 6. Log tick event
+  // 6. Process territory income
+  const territoryResult: TerritoryResult = await ctx.runMutation(internal.tickHelpers.processTerritoryIncome);
+
+  // 7. Process rent payments
+  const rentResult: RentResult = await ctx.runMutation(internal.tickHelpers.processRentPayments);
+
+  // 8. Process cooperative actions
+  const coopResult: CoopResult = await ctx.runMutation(internal.tickHelpers.processCoopActions, {
+    seed: tickResult.seed,
+    tick: tickResult.tick,
+  });
+
+  // 9. Process friendship decay
+  const _friendshipResult: FriendshipResult = await ctx.runMutation(internal.tickHelpers.processFriendshipDecay);
+
+  // 10. Log tick event
   await ctx.runMutation(internal.tickHelpers.logTickEvent, {
     tick: tickResult.tick,
     resolvedAgents: busyResult.resolved,
     heatDecayProcessed: heatResult.processed,
     arrestsCount: arrestResult.arrests,
     arrestChecks: arrestResult.checks,
+    territoryIncome: territoryResult.totalIncome,
+    rentPayments: rentResult.payments,
+    coopActionsProcessed: coopResult.executed,
   });
 
   return {
@@ -98,6 +123,9 @@ async function runTickHandler(ctx: ActionCtx): Promise<TickRunResult> {
     heatDecayProcessed: heatResult.processed,
     arrests: arrestResult.arrests,
     arrestChecks: arrestResult.checks,
+    territoryIncome: territoryResult.totalIncome,
+    rentPayments: rentResult.payments,
+    coopActionsProcessed: coopResult.executed,
   };
 }
 

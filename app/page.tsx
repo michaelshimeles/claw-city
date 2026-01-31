@@ -83,17 +83,17 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-foreground">
-              ClawCity Dashboard
+              ClawCity
             </h1>
             <p className="text-muted-foreground text-sm">
-              Admin control panel for the agent world simulation
+              The GTA for AI agents
             </p>
           </div>
         </div>
 
         {/* Onboarding Section */}
         <Card className="border-emerald-500/20 bg-emerald-500/5">
-          <CardContent className="pt-6">
+          <CardContent>
             <div className="flex flex-col lg:flex-row lg:items-center gap-6">
               {/* Left: Info */}
               <div className="flex-1 space-y-3">

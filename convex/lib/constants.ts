@@ -113,6 +113,35 @@ export const ACTION_TYPES = [
   "SET_PRICES",
   "STOCK_BUSINESS",
   "USE_ITEM",
+  // Social actions - Friendships
+  "SEND_FRIEND_REQUEST",
+  "RESPOND_FRIEND_REQUEST",
+  "REMOVE_FRIEND",
+  // Social actions - Gangs
+  "CREATE_GANG",
+  "INVITE_TO_GANG",
+  "RESPOND_GANG_INVITE",
+  "LEAVE_GANG",
+  "KICK_FROM_GANG",
+  "PROMOTE_MEMBER",
+  "DEMOTE_MEMBER",
+  "CONTRIBUTE_TO_GANG",
+  // Social actions - Territories
+  "CLAIM_TERRITORY",
+  // Social actions - Cooperative crimes
+  "INITIATE_COOP_CRIME",
+  "JOIN_COOP_ACTION",
+  // Social actions - Properties
+  "BUY_PROPERTY",
+  "SELL_PROPERTY",
+  "RENT_PROPERTY",
+  "INVITE_RESIDENT",
+  "EVICT_RESIDENT",
+  // Social actions - PvP & Social
+  "GIFT_CASH",
+  "GIFT_ITEM",
+  "ROB_AGENT",
+  "BETRAY_GANG",
 ] as const;
 
 export type ActionType = (typeof ACTION_TYPES)[number];
@@ -161,6 +190,50 @@ export const EVENT_TYPES = [
   "MARKET_CRASH",
   "POLICE_CRACKDOWN",
   "JOB_DROUGHT",
+  // Friendship events
+  "FRIEND_REQUEST_SENT",
+  "FRIEND_REQUEST_ACCEPTED",
+  "FRIEND_REQUEST_DECLINED",
+  "FRIEND_REMOVED",
+  "FRIENDSHIP_DECAYED",
+  // Gang events
+  "GANG_CREATED",
+  "GANG_INVITE_SENT",
+  "GANG_JOINED",
+  "GANG_INVITE_DECLINED",
+  "GANG_LEFT",
+  "GANG_MEMBER_KICKED",
+  "GANG_MEMBER_PROMOTED",
+  "GANG_MEMBER_DEMOTED",
+  "GANG_CONTRIBUTION",
+  "GANG_BETRAYED",
+  "GANG_DISBANDED",
+  // Territory events
+  "TERRITORY_CLAIMED",
+  "TERRITORY_INCOME",
+  "TERRITORY_CONTROL_DECAYED",
+  "TERRITORY_LOST",
+  "TERRITORY_CONTESTED",
+  // Cooperative crime events
+  "COOP_CRIME_INITIATED",
+  "COOP_CRIME_JOINED",
+  "COOP_CRIME_EXECUTED",
+  "COOP_CRIME_SUCCESS",
+  "COOP_CRIME_FAILED",
+  "COOP_CRIME_CANCELLED",
+  // Property events
+  "PROPERTY_PURCHASED",
+  "PROPERTY_SOLD",
+  "PROPERTY_RENTED",
+  "RESIDENT_INVITED",
+  "RESIDENT_EVICTED",
+  "RENT_PAID",
+  "RENT_OVERDUE",
+  // PvP & Social events
+  "CASH_GIFTED",
+  "ITEM_GIFTED",
+  "AGENT_ROBBED",
+  "ROB_ATTEMPT_FAILED",
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -220,6 +293,42 @@ export const ERROR_CODES = {
   OUT_OF_STOCK: "Business doesn't have item",
   UNAUTHORIZED: "Invalid or missing API key",
   INTERNAL_ERROR: "An internal error occurred",
+  // Social error codes
+  INVALID_AGENT: "Target agent does not exist",
+  AGENT_NOT_IN_ZONE: "Target agent not in same zone",
+  ALREADY_FRIENDS: "Already friends with this agent",
+  FRIEND_REQUEST_EXISTS: "Friend request already pending",
+  FRIENDSHIP_NOT_FOUND: "Friendship not found",
+  INVALID_FRIENDSHIP: "Invalid friendship ID",
+  CANNOT_FRIEND_SELF: "Cannot send friend request to yourself",
+  ALREADY_IN_GANG: "Already in a gang",
+  NOT_IN_GANG: "Not in a gang",
+  INVALID_GANG: "Gang does not exist",
+  NOT_GANG_LEADER: "Must be gang leader for this action",
+  NOT_GANG_OFFICER: "Must be leader or lieutenant for this action",
+  GANG_INVITE_NOT_FOUND: "Gang invite not found or expired",
+  ALREADY_INVITED: "Agent already has pending invite",
+  TARGET_IN_GANG: "Target agent already in a gang",
+  CANNOT_KICK_SELF: "Cannot kick yourself from gang",
+  CANNOT_KICK_LEADER: "Cannot kick the gang leader",
+  CANNOT_DEMOTE_LEADER: "Cannot demote the gang leader",
+  CANNOT_PROMOTE_FURTHER: "Cannot promote beyond lieutenant",
+  INVALID_ROLE: "Invalid gang role",
+  TERRITORY_ALREADY_CLAIMED: "Territory already controlled by your gang",
+  TERRITORY_NOT_CONTESTABLE: "Territory control too strong to contest",
+  COOP_ACTION_NOT_FOUND: "Coop action not found",
+  COOP_ACTION_FULL: "Coop action already at max participants",
+  COOP_ACTION_NOT_RECRUITING: "Coop action not accepting participants",
+  ALREADY_IN_COOP: "Already participating in this coop action",
+  INVALID_PROPERTY: "Property does not exist",
+  PROPERTY_OWNED: "Property already owned",
+  NOT_PROPERTY_OWNER: "Not the owner of this property",
+  PROPERTY_AT_CAPACITY: "Property at maximum capacity",
+  ALREADY_RESIDENT: "Already a resident of this property",
+  NOT_RESIDENT: "Not a resident of this property",
+  GANG_BAN_ACTIVE: "Cannot join gang - betrayal ban in effect",
+  CANNOT_ROB_SELF: "Cannot rob yourself",
+  CANNOT_GIFT_SELF: "Cannot gift to yourself",
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_CODES;
@@ -374,3 +483,149 @@ export const JOB_TYPES = [
 ] as const;
 
 export type JobType = (typeof JOB_TYPES)[number];
+
+// ============================================================================
+// SOCIAL FEATURE CONSTANTS
+// ============================================================================
+
+/**
+ * Gang member roles
+ */
+export const GANG_ROLES = [
+  "leader",
+  "lieutenant",
+  "enforcer",
+  "member",
+] as const;
+
+export type GangRole = (typeof GANG_ROLES)[number];
+
+/**
+ * Friendship statuses
+ */
+export const FRIENDSHIP_STATUSES = [
+  "pending",
+  "accepted",
+  "blocked",
+] as const;
+
+export type FriendshipStatus = (typeof FRIENDSHIP_STATUSES)[number];
+
+/**
+ * Property types with their configurations
+ */
+export const PROPERTY_TYPES = [
+  "apartment",
+  "house",
+  "safehouse",
+  "penthouse",
+  "warehouse",
+] as const;
+
+export type PropertyType = (typeof PROPERTY_TYPES)[number];
+
+/**
+ * Coop action statuses
+ */
+export const COOP_ACTION_STATUSES = [
+  "recruiting",
+  "ready",
+  "executing",
+  "completed",
+  "failed",
+  "cancelled",
+] as const;
+
+export type CoopActionStatus = (typeof COOP_ACTION_STATUSES)[number];
+
+/**
+ * Cooperative crime types (mapped from regular crimes)
+ */
+export const COOP_CRIME_TYPES = ["COOP_THEFT", "COOP_ROBBERY", "COOP_SMUGGLING"] as const;
+
+export type CoopCrimeType = (typeof COOP_CRIME_TYPES)[number];
+
+/**
+ * Property configurations by type
+ */
+export const PROPERTY_CONFIG: Record<PropertyType, {
+  buyPrice: number;
+  rentPrice: number;
+  heatReduction: number; // Percentage
+  staminaBoost: number; // Percentage
+  capacity: number;
+}> = {
+  apartment: { buyPrice: 2000, rentPrice: 100, heatReduction: 10, staminaBoost: 10, capacity: 2 },
+  house: { buyPrice: 5000, rentPrice: 250, heatReduction: 20, staminaBoost: 15, capacity: 4 },
+  safehouse: { buyPrice: 10000, rentPrice: 500, heatReduction: 50, staminaBoost: 10, capacity: 6 },
+  penthouse: { buyPrice: 25000, rentPrice: 1000, heatReduction: 30, staminaBoost: 25, capacity: 4 },
+  warehouse: { buyPrice: 8000, rentPrice: 400, heatReduction: 10, staminaBoost: 0, capacity: 8 },
+};
+
+/**
+ * Social feature defaults and configuration
+ */
+export const SOCIAL_DEFAULTS = {
+  // Gang creation
+  gangCreationCost: 5000,
+  gangNameMinLength: 3,
+  gangNameMaxLength: 24,
+  gangTagMinLength: 2,
+  gangTagMaxLength: 5,
+
+  // Territory
+  territoryClaimCost: 2000,
+  territoryBaseIncome: 50,
+  territoryControlDecayRate: 2, // Per tick when no members present
+  territoryWeakThreshold: 50, // Below this, can be contested
+  territoryCrimeSuccessBonus: 0.10, // +10% crime success in controlled zones
+  territoryHeatDecayBonus: 0.20, // +20% faster heat decay in controlled zones
+
+  // Cooperative crimes
+  coopMinParticipants: 2,
+  coopMaxParticipants: 5,
+  coopSuccessBonusPerMember: 0.10, // +10% per extra member (capped)
+  coopSuccessBonusCap: 0.30, // Max +30% from members
+  coopLootMultiplier: 1.5, // 1.5x total loot
+  coopHeatReductionPerMember: 0.20, // 20% less heat per person
+  coopSameGangBonus: 0.15, // +15% success for same gang
+  coopStrongFriendshipBonus: 0.02, // +2% per strong friendship pair
+  coopRecruitmentDuration: 10, // Ticks to wait for participants
+
+  // Friendships
+  friendshipInitialStrength: 50,
+  friendshipInitialLoyalty: 50,
+  friendshipDecayRate: 1, // Per 100 ticks of inactivity
+  friendshipDecayInterval: 100, // Ticks between decay checks
+  friendshipStrongThreshold: 75, // Strength above this = "strong" friendship
+
+  // PvP Robbery
+  robBaseSuccess: 0.40,
+  robCombatSkillBonus: 0.05, // Per combat skill level
+  robStealthSkillBonus: 0.03, // Per stealth skill level
+  robCashStealMin: 0.10, // Min 10% of victim's cash
+  robCashStealMax: 0.30, // Max 30% of victim's cash
+  robFailureDamageMin: 10,
+  robFailureDamageMax: 30,
+  robHeat: 35, // Heat gain regardless of outcome
+
+  // Betrayal
+  betrayTreasurySteal: 0.50, // Steal 50% of gang treasury
+  betrayReputationPenalty: 50, // -50 reputation
+  betrayHeat: 40,
+  betrayGangBanDuration: 1000, // Ticks before can join new gang
+
+  // Gift limits
+  giftCashMin: 1,
+  giftCashMax: 10000,
+
+  // Rent
+  rentDueInterval: 100, // Ticks between rent payments
+  rentGracePeriod: 10, // Ticks after due before eviction
+
+  // Gang invites
+  gangInviteExpiration: 50, // Ticks before invite expires
+
+  // Coop crime expiration
+  coopCrimeExpiration: 20, // Ticks before coop crime recruitment expires
+} as const;

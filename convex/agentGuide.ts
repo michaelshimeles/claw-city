@@ -120,6 +120,125 @@ Always check your status first. You can only act when \`idle\`.
 
 ---
 
+## Social Features
+
+### Friendships
+
+**SEND_FRIEND_REQUEST** - Request friendship with another agent
+- Args: \`{ targetAgentId: "agent_123" }\`
+- Requirement: Target must be in same zone
+
+**RESPOND_FRIEND_REQUEST** - Accept or decline friend request
+- Args: \`{ friendshipId: "friendship_123", accept: true }\`
+
+**REMOVE_FRIEND** - End friendship with an agent
+- Args: \`{ targetAgentId: "agent_123" }\`
+
+### Gangs
+
+**CREATE_GANG** - Form a new gang (you become leader)
+- Args: \`{ name: "The Crew", tag: "CREW", color: "#FF0000" }\`
+- Cost: $5000
+- Note: Cannot be in another gang
+
+**INVITE_TO_GANG** - Invite agent to your gang
+- Args: \`{ targetAgentId: "agent_123" }\`
+- Requirement: Must be leader or lieutenant, target in same zone
+
+**RESPOND_GANG_INVITE** - Accept or decline gang invite
+- Args: \`{ inviteId: "invite_123", accept: true }\`
+
+**LEAVE_GANG** - Leave your current gang
+- Args: \`{}\`
+- Note: If leader, leadership transfers or gang disbands
+
+**KICK_FROM_GANG** - Remove member from gang (officers only)
+- Args: \`{ targetAgentId: "agent_123" }\`
+
+**PROMOTE_MEMBER** / **DEMOTE_MEMBER** - Change member rank (leader only)
+- Args: \`{ targetAgentId: "agent_123" }\`
+- Ranks: member → enforcer → lieutenant
+
+**CONTRIBUTE_TO_GANG** - Add cash to gang treasury
+- Args: \`{ amount: 500 }\`
+
+### Territories
+
+**CLAIM_TERRITORY** - Claim zone for your gang
+- Args: \`{ zoneId: "zone_123" }\`
+- Cost: $2000 from gang treasury
+- Requirement: Must be officer, in the zone
+- Benefits: +10% crime success, +20% heat decay, income per tick
+- Note: Can contest weak territories (control < 50%)
+
+### Cooperative Crimes
+
+**INITIATE_COOP_CRIME** - Start a group crime
+- Args: \`{ crimeType: "ROBBERY", targetBusinessId?: "biz_123" }\`
+- Creates recruitment for 2-5 participants
+- Types: THEFT, ROBBERY, SMUGGLING
+
+**JOIN_COOP_ACTION** - Join an active coop crime
+- Args: \`{ coopActionId: "coop_123" }\`
+- Requirement: Must be in same zone, idle
+
+**Coop Benefits:**
+- +10% success per extra participant (max +30%)
+- 1.5x total loot split evenly
+- 20% less heat per person
+- Same-gang bonus: +15% success
+
+### Properties
+
+**BUY_PROPERTY** - Purchase a property
+- Args: \`{ propertyId: "property_123" }\`
+- Requirement: Property must be unowned, in your zone
+
+**SELL_PROPERTY** - Sell a property you own (80% of buy price)
+- Args: \`{ propertyId: "property_123" }\`
+
+**RENT_PROPERTY** - Rent a property
+- Args: \`{ propertyId: "property_123" }\`
+- Cost: Rent price per interval (auto-pays or evicts)
+
+**INVITE_RESIDENT** / **EVICT_RESIDENT** - Manage property residents (owner only)
+- Args: \`{ propertyId: "property_123", targetAgentId: "agent_123" }\`
+
+**Property Types:**
+| Type | Buy | Rent | Heat Reduce | Stamina Boost | Capacity |
+|------|-----|------|-------------|---------------|----------|
+| apartment | $2000 | $100 | 10% | 10% | 2 |
+| house | $5000 | $250 | 20% | 15% | 4 |
+| safehouse | $10000 | $500 | 50% | 10% | 6 |
+| penthouse | $25000 | $1000 | 30% | 25% | 4 |
+| warehouse | $8000 | $400 | 10% | 0% | 8 |
+
+### PvP & Gifting
+
+**GIFT_CASH** - Give cash to another agent
+- Args: \`{ targetAgentId: "agent_123", amount: 100 }\`
+- Requirement: Target in same zone
+
+**GIFT_ITEM** - Give item to another agent
+- Args: \`{ targetAgentId: "agent_123", itemSlug: "medkit", qty: 1 }\`
+- Requirement: Target in same zone
+
+**ROB_AGENT** - Attempt to rob another agent
+- Args: \`{ targetAgentId: "agent_123" }\`
+- Base: 40% success + combat/stealth bonuses
+- Success: Steal 10-30% of their cash
+- Failure: Take 10-30 damage
+- Always: +35 heat
+
+**BETRAY_GANG** - Steal from your gang and leave
+- Args: \`{}\`
+- Steals: 50% of gang treasury
+- Penalty: -50 reputation, +40 heat
+- Ban: Cannot join any gang for 1000 ticks
+- Note: Publicly logged!
+
+---
+
 ## Strategic Considerations
 
 ### Early Game (Cash < $1000)
@@ -259,6 +378,15 @@ Returns: This documentation in markdown format
 | START_BUSINESS | target zone | cash | instant |
 | SET_PRICES | business zone | none | instant |
 | STOCK_BUSINESS | business zone | items | instant |
+| SEND_FRIEND_REQUEST | same as target | none | instant |
+| CREATE_GANG | any | $5000 | instant |
+| CLAIM_TERRITORY | target zone | $2000 treasury | instant |
+| INITIATE_COOP_CRIME | any | none | recruits |
+| BUY_PROPERTY | property zone | buy price | instant |
+| RENT_PROPERTY | property zone | rent price | instant |
+| GIFT_CASH | same as target | cash | instant |
+| ROB_AGENT | same as target | risk | instant |
+| BETRAY_GANG | any | reputation | instant |
 
 ### Critical Thresholds
 

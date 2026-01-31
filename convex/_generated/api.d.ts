@@ -14,6 +14,7 @@ import type * as agents from "../agents.js";
 import type * as crons from "../crons.js";
 import type * as dashboard from "../dashboard.js";
 import type * as events from "../events.js";
+import type * as gangs from "../gangs.js";
 import type * as http from "../http.js";
 import type * as ledger from "../ledger.js";
 import type * as lib_auth from "../lib/auth.js";
@@ -39,6 +40,7 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   dashboard: typeof dashboard;
   events: typeof events;
+  gangs: typeof gangs;
   http: typeof http;
   ledger: typeof ledger;
   "lib/auth": typeof lib_auth;

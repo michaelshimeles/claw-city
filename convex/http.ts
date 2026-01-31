@@ -76,6 +76,152 @@ export const getAgentStateByKeyHash = internalQuery({
       .collect();
     const nearbyBusinesses = allBusinesses.filter((b) => b.status === "open");
 
+    // ===============================
+    // SOCIAL DATA
+    // ===============================
+
+    // Gang info
+    let gangInfo = null;
+    if (agent.gangId) {
+      const gang = await ctx.db.get(agent.gangId);
+      if (gang) {
+        const membership = await ctx.db
+          .query("gangMembers")
+          .withIndex("by_agentId", (q) => q.eq("agentId", agent._id))
+          .first();
+        gangInfo = {
+          gangId: gang._id,
+          name: gang.name,
+          tag: gang.tag,
+          role: membership?.role ?? "member",
+          treasury: gang.treasury,
+          reputation: gang.reputation,
+          memberCount: gang.memberCount,
+        };
+      }
+    }
+
+    // Friends nearby (in same zone)
+    const friendsNearby: Array<{
+      agentId: string;
+      name: string;
+      status: string;
+      friendshipStrength: number;
+    }> = [];
+
+    // Get all accepted friendships for this agent
+    const friendships1 = await ctx.db
+      .query("friendships")
+      .withIndex("by_agent1Id", (q) => q.eq("agent1Id", agent._id))
+      .collect();
+    const friendships2 = await ctx.db
+      .query("friendships")
+      .withIndex("by_agent2Id", (q) => q.eq("agent2Id", agent._id))
+      .collect();
+
+    const acceptedFriendships = [...friendships1, ...friendships2].filter(
+      (f) => f.status === "accepted"
+    );
+
+    for (const friendship of acceptedFriendships) {
+      const friendId =
+        friendship.agent1Id === agent._id
+          ? friendship.agent2Id
+          : friendship.agent1Id;
+      const friend = await ctx.db.get(friendId);
+      if (friend && friend.locationZoneId === agent.locationZoneId) {
+        friendsNearby.push({
+          agentId: friend._id,
+          name: friend.name,
+          status: friend.status,
+          friendshipStrength: friendship.strength,
+        });
+      }
+    }
+
+    // Home property
+    let homeInfo = null;
+    if (agent.homePropertyId) {
+      const home = await ctx.db.get(agent.homePropertyId);
+      if (home) {
+        homeInfo = {
+          propertyId: home._id,
+          name: home.name,
+          type: home.type,
+          heatReduction: home.heatReduction,
+          staminaBoost: home.staminaBoost,
+        };
+      }
+    }
+
+    // Pending friend requests (where agent is recipient)
+    const allFriendshipsPending1 = await ctx.db
+      .query("friendships")
+      .withIndex("by_agent1Id", (q) => q.eq("agent1Id", agent._id))
+      .collect();
+    const allFriendshipsPending2 = await ctx.db
+      .query("friendships")
+      .withIndex("by_agent2Id", (q) => q.eq("agent2Id", agent._id))
+      .collect();
+    const pendingFriendRequests = [...allFriendshipsPending1, ...allFriendshipsPending2].filter(
+      (f) => f.status === "pending" && f.initiatorId !== agent._id
+    ).length;
+
+    // Pending gang invites
+    const gangInvites = await ctx.db
+      .query("gangInvites")
+      .withIndex("by_inviteeId", (q) => q.eq("inviteeId", agent._id))
+      .collect();
+    const pendingGangInvites = gangInvites.filter((i) => i.expiresAt > Date.now()).length;
+
+    // Active coop actions in zone
+    const coopActions = await ctx.db
+      .query("coopActions")
+      .withIndex("by_zoneId", (q) => q.eq("zoneId", agent.locationZoneId))
+      .collect();
+    const activeCoopActions = coopActions
+      .filter((c) => c.status === "recruiting" || c.status === "ready")
+      .map((c) => ({
+        coopId: c._id,
+        type: c.type,
+        status: c.status,
+        participants: c.participantIds.length,
+        minParticipants: c.minParticipants,
+        maxParticipants: c.maxParticipants,
+        isParticipant: c.participantIds.includes(agent._id),
+      }));
+
+    // Available properties in zone
+    const propertiesInZone = await ctx.db
+      .query("properties")
+      .withIndex("by_zoneId", (q) => q.eq("zoneId", agent.locationZoneId))
+      .collect();
+    const availableProperties = propertiesInZone
+      .filter((p) => !p.ownerId)
+      .map((p) => ({
+        propertyId: p._id,
+        name: p.name,
+        type: p.type,
+        buyPrice: p.buyPrice,
+        rentPrice: p.rentPrice,
+      }));
+
+    // Territory info for current zone
+    const territory = await ctx.db
+      .query("territories")
+      .withIndex("by_zoneId", (q) => q.eq("zoneId", agent.locationZoneId))
+      .first();
+    let territoryInfo = null;
+    if (territory) {
+      const controllingGang = await ctx.db.get(territory.gangId);
+      territoryInfo = {
+        controlledBy: controllingGang?.name ?? "Unknown",
+        controlledByGangId: territory.gangId,
+        controlStrength: territory.controlStrength,
+        isOwnGang: territory.gangId === agent.gangId,
+      };
+    }
+
     // Don't expose the key hash
     const { agentKeyHash: _, ...safeAgent } = agent;
 
@@ -85,6 +231,16 @@ export const getAgentStateByKeyHash = internalQuery({
       zone,
       nearbyJobs,
       nearbyBusinesses,
+      social: {
+        gang: gangInfo,
+        friendsNearby,
+        home: homeInfo,
+        pendingFriendRequests,
+        pendingGangInvites,
+        activeCoopActions,
+        availableProperties,
+        territory: territoryInfo,
+      },
     };
   },
 });
@@ -354,7 +510,7 @@ http.route({
       return errorResponse("UNAUTHORIZED", "Invalid API key", 401);
     }
 
-    const { agent, world, zone, nearbyJobs, nearbyBusinesses } = result;
+    const { agent, world, zone, nearbyJobs, nearbyBusinesses, social } = result;
 
     // Determine available actions based on agent status
     const availableActions: ActionType[] = [];
@@ -370,7 +526,31 @@ http.route({
         "COMMIT_CRIME",
         "START_BUSINESS",
         "SET_PRICES",
-        "STOCK_BUSINESS"
+        "STOCK_BUSINESS",
+        // Social actions
+        "SEND_FRIEND_REQUEST",
+        "RESPOND_FRIEND_REQUEST",
+        "REMOVE_FRIEND",
+        "CREATE_GANG",
+        "INVITE_TO_GANG",
+        "RESPOND_GANG_INVITE",
+        "LEAVE_GANG",
+        "KICK_FROM_GANG",
+        "PROMOTE_MEMBER",
+        "DEMOTE_MEMBER",
+        "CONTRIBUTE_TO_GANG",
+        "CLAIM_TERRITORY",
+        "INITIATE_COOP_CRIME",
+        "JOIN_COOP_ACTION",
+        "BUY_PROPERTY",
+        "SELL_PROPERTY",
+        "RENT_PROPERTY",
+        "INVITE_RESIDENT",
+        "EVICT_RESIDENT",
+        "GIFT_CASH",
+        "GIFT_ITEM",
+        "ROB_AGENT",
+        "BETRAY_GANG"
       );
     }
 
@@ -390,6 +570,9 @@ http.route({
         inventory: agent.inventory,
         skills: agent.skills,
         stats: agent.stats,
+        socialStats: agent.socialStats,
+        gangId: agent.gangId,
+        homePropertyId: agent.homePropertyId,
       },
       availableActions,
       nearbyJobs: nearbyJobs.map((job: Doc<"jobs">) => ({
@@ -408,6 +591,7 @@ http.route({
         status: biz.status,
         inventory: biz.inventory,
       })),
+      social,
     });
   }),
 });

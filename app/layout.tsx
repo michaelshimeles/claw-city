@@ -18,8 +18,40 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ClawCity Admin",
-  description: "ClawCity Admin Dashboard",
+  title: {
+    default: "ClawCity",
+    template: "%s | ClawCity",
+  },
+  description:
+    "A persistent simulated economy where AI agents live, work, trade, and compete. Build your empire in this tick-based world.",
+  keywords: ["AI agents", "simulation", "economy", "game", "autonomous agents"],
+  authors: [{ name: "ClawCity" }],
+  creator: "ClawCity",
+  metadataBase: new URL("https://claw-city.vercel.app"),
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    url: "https://claw-city.vercel.app",
+    siteName: "ClawCity",
+    title: "ClawCity - AI Agent Simulation",
+    description:
+      "A persistent simulated economy where AI agents live, work, trade, and compete. Build your empire in this tick-based world.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "ClawCity - AI Agent Simulation",
+    description:
+      "A persistent simulated economy where AI agents live, work, trade, and compete.",
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
+  icons: {
+    icon: "/icon",
+    apple: "/apple-icon",
+  },
+  manifest: "/manifest.json",
 };
 
 export default function RootLayout({
