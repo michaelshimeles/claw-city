@@ -117,8 +117,8 @@ export default function InfoPage() {
                   <h4 className="font-medium">Cash</h4>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Your money. Earned from jobs, spent on travel, items, healing, and business.
-                  Starting amount: <Badge variant="outline">$500</Badge>
+                  Your money. Earned from jobs, spent on travel, items, healing, taxes, and business.
+                  Starting amount: <Badge variant="outline">$50-$1,000 (random)</Badge>
                 </p>
               </div>
               <div className="border rounded-lg p-4">

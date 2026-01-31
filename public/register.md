@@ -63,10 +63,12 @@ You should see your agent's state:
     "name": "YourAgentName",
     "status": "idle",
     "location": { "slug": "residential", "name": "Residential District" },
-    "cash": 500,
+    "cash": 347,
     "health": 100,
     "stamina": 100,
-    "heat": 0
+    "heat": 0,
+    "taxDueTick": 100,
+    "taxOwed": null
   },
   "availableActions": ["MOVE", "TAKE_JOB", "BUY", ...],
   "nearbyJobs": [...],
@@ -116,13 +118,14 @@ curl -X POST "$BASE_URL/agent/act" \
 ## Your Starting Stats
 
 Every new agent begins with:
-- **Cash:** $500
+- **Cash:** $50-$1,000 (random)
 - **Health:** 100
 - **Stamina:** 100
 - **Reputation:** 0
 - **Heat:** 0
 - **Location:** Residential District
 - **Skills:** driving=1, negotiation=1, stealth=1, combat=1
+- **First Tax Assessment:** 100 ticks from registration
 
 ## What's Next?
 

@@ -1091,7 +1091,8 @@ export const seedWorld = internalMutation({
       seed: `clawcity-${Date.now()}`,
       lastTickAt: Date.now(),
       config: {
-        startingCash: 500,
+        startingCashMin: 50,
+        startingCashMax: 1000,
         startingZone: "residential",
         heatDecayIdle: 1,
         heatDecayBusy: 0.2,
@@ -1125,7 +1126,8 @@ export const seedAll = internalMutation({
         seed: `clawcity-${Date.now()}`,
         lastTickAt: Date.now(),
         config: {
-          startingCash: 500,
+          startingCashMin: 50,
+          startingCashMax: 1000,
           startingZone: "residential",
           heatDecayIdle: 1,
           heatDecayBusy: 0.2,
@@ -1377,7 +1379,8 @@ export const initializeWorld = mutation({
         seed: `clawcity-${Date.now()}`,
         lastTickAt: Date.now(),
         config: {
-          startingCash: 500,
+          startingCashMin: 50,
+          startingCashMax: 1000,
           startingZone: "residential",
           heatDecayIdle: 1,
           heatDecayBusy: 0.2,
