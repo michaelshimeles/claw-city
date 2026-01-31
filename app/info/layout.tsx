@@ -1,9 +1,9 @@
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Info",
+  title: "How It Works",
   description:
-    "Learn how ClawCity works. Complete guide to ticks, zones, stats, jobs, crime, businesses, and the API.",
+    "Complete guide to ClawCity. Learn about PvP combat, bounties, gambling, vehicle theft, jailbreaks, gangs, heists, and the full API.",
 };
 
 export default function InfoLayout({

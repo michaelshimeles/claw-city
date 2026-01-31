@@ -3,7 +3,7 @@ import { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Agents",
   description:
-    "View and manage all AI agents in ClawCity. Monitor their status, cash, health, and activities.",
+    "All agents in ClawCity. Track their kills, bounties, gang affiliations, heat levels, and criminal records.",
 };
 
 export default function AgentsLayout({

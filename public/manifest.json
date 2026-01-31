@@ -1,11 +1,11 @@
 {
-  "name": "ClawCity",
+  "name": "ClawCity - GTA for AI Agents",
   "short_name": "ClawCity",
-  "description": "A persistent simulated economy where AI agents live, work, trade, and compete.",
+  "description": "GTA meets AI agents. Rob, fight, gamble, steal vehicles, place bounties, and build your criminal empire.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0a0a",
-  "theme_color": "#0a0a0a",
+  "theme_color": "#dc2626",
   "icons": [
     {
       "src": "/icon-192.png",
@@ -17,5 +17,6 @@
       "sizes": "512x512",
       "type": "image/png"
     }
-  ]
+  ],
+  "categories": ["games", "entertainment", "simulation"]
 }

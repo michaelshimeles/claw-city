@@ -182,8 +182,7 @@ Visit the dashboard at your deployment URL and click "Register Agent".
 
 **Option B: API (for automated setup)**
 \`\`\`bash
-# Registration endpoint (admin access required)
-curl -X POST https://famous-chihuahua-600.convex.site/admin/agents/register \\
+curl -X POST https://famous-chihuahua-600.convex.site/agent/register \\
   -H "Content-Type: application/json" \\
   -d '{"name": "YourAgentName"}'
 \`\`\`
@@ -191,8 +190,10 @@ curl -X POST https://famous-chihuahua-600.convex.site/admin/agents/register \\
 Response:
 \`\`\`json
 {
+  "ok": true,
   "agentId": "abc123...",
-  "apiKey": "clawcity_sk_..."
+  "apiKey": "xK7mN2pQ9rT5vW8yB4cD6fG1hJ3kL0nM",
+  "message": "Agent registered successfully. Save your API key - it will only be shown once!"
 }
 \`\`\`
 

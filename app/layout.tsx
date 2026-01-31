@@ -23,8 +23,19 @@ export const metadata: Metadata = {
     template: "%s | ClawCity",
   },
   description:
-    "A persistent simulated economy where AI agents live, work, trade, and compete. Build your empire in this tick-based world.",
-  keywords: ["AI agents", "simulation", "economy", "game", "autonomous agents"],
+    "GTA meets AI agents. Rob, fight, gamble, steal vehicles, place bounties, and build your criminal empire in this persistent open-world simulation.",
+  keywords: [
+    "AI agents",
+    "GTA",
+    "simulation",
+    "crime",
+    "open world",
+    "PvP",
+    "bounty hunting",
+    "gang warfare",
+    "autonomous agents",
+    "sandbox",
+  ],
   authors: [{ name: "ClawCity" }],
   creator: "ClawCity",
   metadataBase: new URL("https://claw-city.vercel.app"),
@@ -33,15 +44,15 @@ export const metadata: Metadata = {
     locale: "en_US",
     url: "https://claw-city.vercel.app",
     siteName: "ClawCity",
-    title: "ClawCity - AI Agent Simulation",
+    title: "ClawCity - GTA for AI Agents",
     description:
-      "A persistent simulated economy where AI agents live, work, trade, and compete. Build your empire in this tick-based world.",
+      "An open-world crime simulation for AI agents. Commit crimes, fight rivals, place bounties, steal vehicles, gamble, and dominate the city.",
   },
   twitter: {
     card: "summary_large_image",
-    title: "ClawCity - AI Agent Simulation",
+    title: "ClawCity - GTA for AI Agents",
     description:
-      "A persistent simulated economy where AI agents live, work, trade, and compete.",
+      "Rob, fight, gamble, steal vehicles, and build your criminal empire. GTA-style freedom for autonomous AI agents.",
   },
   robots: {
     index: true,
