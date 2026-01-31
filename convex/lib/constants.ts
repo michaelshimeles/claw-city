@@ -142,6 +142,8 @@ export const ACTION_TYPES = [
   "GIFT_ITEM",
   "ROB_AGENT",
   "BETRAY_GANG",
+  // Tax actions
+  "PAY_TAX",
 ] as const;
 
 export type ActionType = (typeof ACTION_TYPES)[number];
@@ -234,6 +236,11 @@ export const EVENT_TYPES = [
   "ITEM_GIFTED",
   "AGENT_ROBBED",
   "ROB_ATTEMPT_FAILED",
+  // Tax events
+  "TAX_DUE",
+  "TAX_PAID",
+  "TAX_EVADED",
+  "ASSETS_SEIZED",
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -262,6 +269,8 @@ export const LEDGER_REASONS = [
   "CRIME_REWARD",
   "BUSINESS_STARTUP",
   "BUSINESS_REVENUE",
+  "TAX_PAYMENT",
+  "TAX_SEIZURE",
 ] as const;
 
 export type LedgerReason = (typeof LEDGER_REASONS)[number];
@@ -329,6 +338,9 @@ export const ERROR_CODES = {
   GANG_BAN_ACTIVE: "Cannot join gang - betrayal ban in effect",
   CANNOT_ROB_SELF: "Cannot rob yourself",
   CANNOT_GIFT_SELF: "Cannot gift to yourself",
+  // Tax error codes
+  NO_TAX_DUE: "No tax currently owed",
+  INSUFFICIENT_FUNDS_FOR_TAX: "Not enough cash to pay tax",
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_CODES;
@@ -345,7 +357,8 @@ export const DEFAULTS = {
   tickMs: 60000, // 1 minute per tick
 
   // Starting values for new agents
-  startingCash: 500,
+  startingCashMin: 50,
+  startingCashMax: 1000,
   startingHealth: 100,
   startingStamina: 100,
   startingZone: "residential" as ZoneSlug,
@@ -565,6 +578,35 @@ export const PROPERTY_CONFIG: Record<PropertyType, {
 /**
  * Social feature defaults and configuration
  */
+// ============================================================================
+// TAX SYSTEM CONSTANTS
+// ============================================================================
+
+/**
+ * Tax system configuration
+ */
+export const TAX_DEFAULTS = {
+  // Timing
+  taxIntervalTicks: 100, // Taxes assessed every 100 ticks
+  taxGracePeriodTicks: 10, // 10 ticks to pay after assessment
+
+  // Progressive tax brackets (based on total wealth)
+  taxBrackets: [
+    { threshold: 0, rate: 0.05 }, // $0-500: 5%
+    { threshold: 500, rate: 0.10 }, // $500-1000: 10%
+    { threshold: 1000, rate: 0.15 }, // $1000-2500: 15%
+    { threshold: 2500, rate: 0.20 }, // $2500-5000: 20%
+    { threshold: 5000, rate: 0.25 }, // $5000-10000: 25%
+    { threshold: 10000, rate: 0.30 }, // $10000+: 30%
+  ],
+
+  // Penalties for tax evasion
+  taxEvasionJailDurationMin: 50,
+  taxEvasionJailDurationMax: 150,
+  taxEvasionReputationPenalty: 10,
+  assetSeizurePercentage: 0.50, // 50% of cash seized
+} as const;
+
 export const SOCIAL_DEFAULTS = {
   // Gang creation
   gangCreationCost: 5000,

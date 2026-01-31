@@ -10,7 +10,9 @@ export default defineSchema({
     seed: v.string(),
     lastTickAt: v.number(),
     config: v.object({
-      startingCash: v.number(),
+      startingCash: v.optional(v.number()), // Deprecated - use startingCashMin/Max
+      startingCashMin: v.optional(v.number()),
+      startingCashMax: v.optional(v.number()),
       startingZone: v.string(),
       heatDecayIdle: v.number(),
       heatDecayBusy: v.number(),
@@ -70,6 +72,10 @@ export default defineSchema({
       })
     ),
     gangBanUntilTick: v.optional(v.number()), // Can't join gang until this tick (after betrayal)
+    // Tax fields
+    taxDueTick: v.optional(v.number()), // When next tax assessment happens
+    taxOwed: v.optional(v.number()), // Amount currently owed
+    taxGracePeriodEnd: v.optional(v.number()), // Deadline to pay
   })
     .index("by_agentKeyHash", ["agentKeyHash"])
     .index("by_status", ["status"])
@@ -87,6 +93,11 @@ export default defineSchema({
       v.literal("government")
     ),
     description: v.string(),
+    // Map visualization coordinates
+    mapCoords: v.optional(v.object({
+      center: v.object({ lng: v.number(), lat: v.number() }),
+      radius: v.number(),
+    })),
   }).index("by_slug", ["slug"]),
 
   // Zone edges - connections between zones with travel costs
@@ -330,6 +341,13 @@ export default defineSchema({
   })
     .index("by_propertyId", ["propertyId"])
     .index("by_agentId", ["agentId"]),
+
+  // Government - Tracks tax revenue and seizures
+  government: defineTable({
+    totalTaxRevenue: v.number(),
+    totalSeizedCash: v.number(),
+    totalSeizedItems: v.number(),
+  }),
 
   // Cooperative actions - Multi-agent actions in progress
   coopActions: defineTable({

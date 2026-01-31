@@ -20,6 +20,7 @@ import {
   PROPERTY_CONFIG,
   PropertyType,
   GangRole,
+  TAX_DEFAULTS,
 } from "./lib/constants";
 import { createTickRng } from "./lib/rng";
 
@@ -102,6 +103,8 @@ export type ActionArgs = {
   GIFT_ITEM: { targetAgentId: string; itemSlug: string; qty: number };
   ROB_AGENT: { targetAgentId: string };
   BETRAY_GANG: Record<string, never>;
+  // Tax actions
+  PAY_TAX: Record<string, never>;
 };
 
 // ============================================================================
@@ -220,6 +223,9 @@ export async function handleAction(
       return handleRobAgent(actionCtx, args as ActionArgs["ROB_AGENT"]);
     case "BETRAY_GANG":
       return handleBetrayGang(actionCtx, args as ActionArgs["BETRAY_GANG"]);
+    // Tax actions
+    case "PAY_TAX":
+      return handlePayTax(actionCtx, args as ActionArgs["PAY_TAX"]);
     default:
       return {
         ok: false,
@@ -3834,6 +3840,100 @@ async function handleBetrayGang(
       newReputation,
       newHeat,
       gangBanUntilTick,
+    },
+  };
+}
+
+// ============================================================================
+// TAX ACTION HANDLERS
+// ============================================================================
+
+async function handlePayTax(
+  actionCtx: ActionContext,
+  _args: ActionArgs["PAY_TAX"]
+): Promise<ActionResult> {
+  const { ctx, agent, world, requestId } = actionCtx;
+
+  // 1. Check if agent has taxes owed
+  if (!agent.taxOwed || agent.taxOwed <= 0) {
+    return {
+      ok: false,
+      error: "NO_TAX_DUE",
+      message: ERROR_CODES.NO_TAX_DUE,
+    };
+  }
+
+  const taxOwed = agent.taxOwed;
+
+  // 2. Check if agent has enough cash
+  if (agent.cash < taxOwed) {
+    return {
+      ok: false,
+      error: "INSUFFICIENT_FUNDS_FOR_TAX",
+      message: `${ERROR_CODES.INSUFFICIENT_FUNDS_FOR_TAX}. Need $${taxOwed}, have $${agent.cash}`,
+    };
+  }
+
+  // 3. Deduct tax from agent
+  const newCash = agent.cash - taxOwed;
+  await ctx.db.patch(agent._id, {
+    cash: newCash,
+    taxOwed: undefined,
+    taxGracePeriodEnd: undefined,
+    taxDueTick: world.tick + TAX_DEFAULTS.taxIntervalTicks,
+  });
+
+  // 4. Update government revenue
+  let government = await ctx.db.query("government").first();
+  if (!government) {
+    const govId = await ctx.db.insert("government", {
+      totalTaxRevenue: 0,
+      totalSeizedCash: 0,
+      totalSeizedItems: 0,
+    });
+    government = await ctx.db.get(govId);
+  }
+  if (government) {
+    await ctx.db.patch(government._id, {
+      totalTaxRevenue: government.totalTaxRevenue + taxOwed,
+    });
+  }
+
+  // 5. Log TAX_PAID event
+  const eventId = await ctx.db.insert("events", {
+    tick: world.tick,
+    timestamp: Date.now(),
+    type: "TAX_PAID",
+    agentId: agent._id,
+    zoneId: agent.locationZoneId,
+    entityId: null,
+    payload: {
+      amount: taxOwed,
+      method: "manual",
+      newCash,
+      nextTaxDue: world.tick + TAX_DEFAULTS.taxIntervalTicks,
+    },
+    requestId,
+  });
+
+  // 6. Ledger entry
+  await ctx.db.insert("ledger", {
+    tick: world.tick,
+    agentId: agent._id,
+    type: "debit",
+    amount: taxOwed,
+    reason: "TAX_PAYMENT",
+    balance: newCash,
+    refEventId: eventId,
+  });
+
+  return {
+    ok: true,
+    message: `Paid $${taxOwed} in taxes. Next tax assessment at tick ${world.tick + TAX_DEFAULTS.taxIntervalTicks}.`,
+    result: {
+      taxPaid: taxOwed,
+      newCash,
+      nextTaxDueTick: world.tick + TAX_DEFAULTS.taxIntervalTicks,
     },
   };
 }

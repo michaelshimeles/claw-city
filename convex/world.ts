@@ -55,7 +55,8 @@ export const initializeWorld = mutation({
       seed: `clawcity-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`,
       lastTickAt: Date.now(),
       config: {
-        startingCash: DEFAULTS.startingCash,
+        startingCashMin: DEFAULTS.startingCashMin,
+        startingCashMax: DEFAULTS.startingCashMax,
         startingZone: DEFAULTS.startingZone,
         heatDecayIdle: DEFAULTS.heatDecayIdle,
         heatDecayBusy: DEFAULTS.heatDecayBusy,

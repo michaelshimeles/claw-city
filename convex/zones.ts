@@ -159,6 +159,211 @@ export const getZoneDetail = query({
 });
 
 /**
+ * Get zone context with detailed information about what's happening in a zone
+ */
+export const getZoneContext = query({
+  args: { zoneId: v.id("zones") },
+  handler: async (ctx, args) => {
+    const zone = await ctx.db.get(args.zoneId);
+    if (!zone) {
+      return null;
+    }
+
+    // Get all data for this zone
+    const [agents, businesses, jobs, coopActions, territories, gangs] =
+      await Promise.all([
+        ctx.db
+          .query("agents")
+          .withIndex("by_locationZoneId", (q) =>
+            q.eq("locationZoneId", args.zoneId)
+          )
+          .collect(),
+        ctx.db
+          .query("businesses")
+          .withIndex("by_zoneId", (q) => q.eq("zoneId", args.zoneId))
+          .collect(),
+        ctx.db
+          .query("jobs")
+          .withIndex("by_zoneId", (q) => q.eq("zoneId", args.zoneId))
+          .filter((q) => q.eq(q.field("active"), true))
+          .collect(),
+        ctx.db
+          .query("coopActions")
+          .withIndex("by_zoneId", (q) => q.eq("zoneId", args.zoneId))
+          .filter((q) => q.eq(q.field("status"), "recruiting"))
+          .collect(),
+        ctx.db
+          .query("territories")
+          .withIndex("by_zoneId", (q) => q.eq("zoneId", args.zoneId))
+          .collect(),
+        ctx.db.query("gangs").collect(),
+      ]);
+
+    // Build gang lookup
+    const gangsById: Record<
+      string,
+      { name: string; tag: string; color: string }
+    > = {};
+    for (const gang of gangs) {
+      gangsById[gang._id.toString()] = {
+        name: gang.name,
+        tag: gang.tag,
+        color: gang.color,
+      };
+    }
+
+    // Calculate zone heat
+    const totalHeat = agents.reduce((sum, a) => sum + a.heat, 0);
+    const avgHeat = agents.length > 0 ? Math.round(totalHeat / agents.length) : 0;
+    const maxHeat = agents.length > 0 ? Math.max(...agents.map((a) => a.heat)) : 0;
+
+    // Get hottest agents in zone
+    const hottestAgents = [...agents]
+      .sort((a, b) => b.heat - a.heat)
+      .slice(0, 5)
+      .map((a) => ({
+        _id: a._id,
+        name: a.name,
+        heat: a.heat,
+        status: a.status,
+        gangTag: a.gangId ? gangsById[a.gangId.toString()]?.tag ?? null : null,
+      }));
+
+    // Format agents in zone (hide key hash)
+    const agentsInZone = agents.map((a) => ({
+      _id: a._id,
+      name: a.name,
+      status: a.status,
+      cash: a.cash,
+      health: a.health,
+      heat: a.heat,
+      reputation: a.reputation,
+      gangId: a.gangId,
+      gangTag: a.gangId ? gangsById[a.gangId.toString()]?.tag ?? null : null,
+      gangColor: a.gangId ? gangsById[a.gangId.toString()]?.color ?? null : null,
+    }));
+
+    // Territory info
+    const territory = territories[0];
+    let territoryInfo = null;
+    if (territory) {
+      const gang = gangsById[territory.gangId.toString()];
+      territoryInfo = {
+        gangId: territory.gangId,
+        gangName: gang?.name ?? "Unknown",
+        gangTag: gang?.tag ?? "???",
+        gangColor: gang?.color ?? "#888888",
+        controlStrength: territory.controlStrength,
+        incomePerTick: territory.incomePerTick,
+        isContestable: territory.controlStrength < 50,
+      };
+    }
+
+    // Get items for business inventory
+    const items = await ctx.db.query("items").collect();
+    const itemsById: Record<string, { slug: string; name: string }> = {};
+    for (const item of items) {
+      itemsById[item._id.toString()] = { slug: item.slug, name: item.name };
+    }
+
+    // Format businesses
+    const formattedBusinesses = businesses.map((biz) => ({
+      _id: biz._id,
+      name: biz.name,
+      type: biz.type,
+      status: biz.status,
+      reputation: biz.reputation,
+      inventory: biz.inventory.slice(0, 5).map((inv) => ({
+        itemName: itemsById[inv.itemId.toString()]?.name ?? "Unknown",
+        qty: inv.qty,
+        price: inv.price,
+      })),
+    }));
+
+    // Format coop crimes
+    const formattedCoopCrimes = await Promise.all(
+      coopActions.map(async (action) => {
+        const initiator = await ctx.db.get(action.initiatorId);
+        return {
+          _id: action._id,
+          type: action.type,
+          initiatorName: initiator?.name ?? "Unknown",
+          participantCount: action.participantIds.length,
+          minParticipants: action.minParticipants,
+          maxParticipants: action.maxParticipants,
+          expiresAt: action.expiresAt,
+        };
+      })
+    );
+
+    // Detect potential conflicts (multiple gangs with members present)
+    const gangPresence: Record<string, number> = {};
+    for (const agent of agents) {
+      if (agent.gangId) {
+        const gangId = agent.gangId.toString();
+        gangPresence[gangId] = (gangPresence[gangId] || 0) + 1;
+      }
+    }
+    const gangsPresent = Object.keys(gangPresence).length;
+    const hasConflictPotential = gangsPresent >= 2;
+
+    return {
+      zone: {
+        _id: zone._id,
+        slug: zone.slug,
+        name: zone.name,
+        type: zone.type,
+        description: zone.description,
+      },
+      // Heat stats
+      heat: {
+        total: totalHeat,
+        average: avgHeat,
+        max: maxHeat,
+        hottestAgents,
+      },
+      // Agents present
+      agents: {
+        count: agents.length,
+        list: agentsInZone,
+        byStatus: {
+          idle: agents.filter((a) => a.status === "idle").length,
+          busy: agents.filter((a) => a.status === "busy").length,
+          jailed: agents.filter((a) => a.status === "jailed").length,
+          hospitalized: agents.filter((a) => a.status === "hospitalized").length,
+        },
+      },
+      // Businesses
+      businesses: formattedBusinesses,
+      // Jobs available
+      jobs: jobs.map((j) => ({
+        _id: j._id,
+        title: j.title,
+        type: j.type,
+        wage: j.wage,
+        durationTicks: j.durationTicks,
+        staminaCost: j.staminaCost,
+      })),
+      // Territory control
+      territory: territoryInfo,
+      // Active coop crimes recruiting
+      coopCrimes: formattedCoopCrimes,
+      // Conflict indicators
+      conflicts: {
+        gangsPresent,
+        hasConflictPotential,
+        gangPresence: Object.entries(gangPresence).map(([gangId, count]) => ({
+          gangId,
+          gangName: gangsById[gangId]?.name ?? "Unknown",
+          gangTag: gangsById[gangId]?.tag ?? "???",
+          count,
+        })),
+      },
+    };
+  },
+});
+
+/**
  * Get market prices by zone
  * Returns market state entries with zone and item details
  */

@@ -15,7 +15,9 @@ type WorldStatus = {
   tick: number;
   seed: string;
   config: {
-    startingCash: number;
+    startingCash?: number;
+    startingCashMin?: number;
+    startingCashMax?: number;
     startingZone: string;
     heatDecayIdle: number;
     heatDecayBusy: number;
@@ -28,7 +30,9 @@ type TickResult = {
   tick: number;
   seed: string;
   config: {
-    startingCash: number;
+    startingCash?: number;
+    startingCashMin?: number;
+    startingCashMax?: number;
     startingZone: string;
     heatDecayIdle: number;
     heatDecayBusy: number;
@@ -45,6 +49,7 @@ type TerritoryResult = { processed: number; totalIncome: number; decayed: number
 type RentResult = { payments: number; evictions: number };
 type CoopResult = { executed: number; cancelled: number };
 type FriendshipResult = { decayed: number; removed: number };
+type TaxResult = { assessed: number; paid: number; evaded: number };
 
 type TickRunResult =
   | { skipped: true; reason: string }
@@ -58,6 +63,9 @@ type TickRunResult =
       territoryIncome: number;
       rentPayments: number;
       coopActionsProcessed: number;
+      taxesAssessed: number;
+      taxesPaid: number;
+      taxEvaders: number;
     };
 
 // ============================================================================
@@ -104,7 +112,13 @@ async function runTickHandler(ctx: ActionCtx): Promise<TickRunResult> {
   // 9. Process friendship decay
   const _friendshipResult: FriendshipResult = await ctx.runMutation(internal.tickHelpers.processFriendshipDecay);
 
-  // 10. Log tick event
+  // 10. Process taxes
+  const taxResult: TaxResult = await ctx.runMutation(internal.tickHelpers.processTaxes, {
+    seed: tickResult.seed,
+    tick: tickResult.tick,
+  });
+
+  // 11. Log tick event
   await ctx.runMutation(internal.tickHelpers.logTickEvent, {
     tick: tickResult.tick,
     resolvedAgents: busyResult.resolved,
@@ -114,6 +128,9 @@ async function runTickHandler(ctx: ActionCtx): Promise<TickRunResult> {
     territoryIncome: territoryResult.totalIncome,
     rentPayments: rentResult.payments,
     coopActionsProcessed: coopResult.executed,
+    taxesAssessed: taxResult.assessed,
+    taxesPaid: taxResult.paid,
+    taxEvaders: taxResult.evaded,
   });
 
   return {
@@ -126,6 +143,9 @@ async function runTickHandler(ctx: ActionCtx): Promise<TickRunResult> {
     territoryIncome: territoryResult.totalIncome,
     rentPayments: rentResult.payments,
     coopActionsProcessed: coopResult.executed,
+    taxesAssessed: taxResult.assessed,
+    taxesPaid: taxResult.paid,
+    taxEvaders: taxResult.evaded,
   };
 }
 

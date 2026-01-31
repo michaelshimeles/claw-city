@@ -16,7 +16,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { RegisterAgentDialog } from "@/components/agents/register-agent-dialog";
-import { EyeIcon, UsersIcon, FilterIcon } from "lucide-react";
+import {
+  EyeIcon,
+  UsersIcon,
+  FilterIcon,
+  ZapIcon,
+  StarIcon,
+  PackageIcon,
+} from "lucide-react";
 
 type AgentStatus = "idle" | "busy" | "jailed" | "hospitalized";
 
@@ -57,10 +64,20 @@ function getHeatTextColor(heat: number): string {
   return "text-red-600 dark:text-red-400";
 }
 
-export default function AgentsPage() {
-  const [statusFilter, setStatusFilter] = React.useState<AgentStatus | "all">(
-    "all"
+// Skill bar component
+function SkillBars({ skills }: { skills: { driving: number; negotiation: number; stealth: number; combat: number } }) {
+  return (
+    <div className="flex gap-0.5" title={`D:${skills.driving} N:${skills.negotiation} S:${skills.stealth} C:${skills.combat}`}>
+      <div className="w-1 h-3 rounded-sm" style={{ backgroundColor: `rgba(34, 197, 94, ${skills.driving / 100})` }} />
+      <div className="w-1 h-3 rounded-sm" style={{ backgroundColor: `rgba(59, 130, 246, ${skills.negotiation / 100})` }} />
+      <div className="w-1 h-3 rounded-sm" style={{ backgroundColor: `rgba(168, 85, 247, ${skills.stealth / 100})` }} />
+      <div className="w-1 h-3 rounded-sm" style={{ backgroundColor: `rgba(239, 68, 68, ${skills.combat / 100})` }} />
+    </div>
   );
+}
+
+export default function AgentsPage() {
+  const [statusFilter, setStatusFilter] = React.useState<AgentStatus | "all">("all");
   const [zoneFilter, setZoneFilter] = React.useState<string>("all");
 
   // Query agents with optional status filter
@@ -72,11 +89,20 @@ export default function AgentsPage() {
   // Query zones for filter dropdown
   const zones = useQuery(api.zones.listZones);
 
+  // Query gangs for gang badges
+  const gangs = useQuery(api.gangs.listGangs);
+
   // Create zone lookup map
   const zoneMap = React.useMemo(() => {
     if (!zones) return new Map<string, string>();
     return new Map(zones.map((z) => [z._id, z.name]));
   }, [zones]);
+
+  // Create gang lookup map
+  const gangMap = React.useMemo(() => {
+    if (!gangs) return new Map<string, { tag: string; color: string }>();
+    return new Map(gangs.map((g) => [g._id, { tag: g.tag, color: g.color }]));
+  }, [gangs]);
 
   // Filter agents by zone (client-side since listAgents only supports one filter at a time)
   const filteredAgents = React.useMemo(() => {
@@ -88,201 +114,274 @@ export default function AgentsPage() {
   const isLoading = agents === undefined || zones === undefined;
 
   return (
-    <div className="min-h-screen bg-background px-4 py-6"><div className="max-w-7xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="bg-primary/10 rounded-md p-2">
-            <UsersIcon className="text-primary size-5" />
-          </div>
-          <div>
-            <h1 className="text-xl font-semibold">Agents</h1>
-            <p className="text-muted-foreground text-sm">
-              Manage registered agents in ClawCity
-            </p>
-          </div>
-        </div>
-        <RegisterAgentDialog />
-      </div>
-
-      {/* Filters */}
-      <Card size="sm">
-        <CardContent className="pt-4">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2">
-              <FilterIcon className="text-muted-foreground size-4" />
-              <span className="text-muted-foreground text-sm font-medium">
-                Filters:
-              </span>
+    <div className="min-h-screen bg-background px-4 py-6">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="bg-primary/10 rounded-md p-2">
+              <UsersIcon className="text-primary size-5" />
             </div>
-            <Select
-              value={statusFilter}
-              onValueChange={(value: string | null) =>
-                setStatusFilter((value ?? "all") as AgentStatus | "all")
-              }
-            >
-              <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {STATUS_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-            <Select value={zoneFilter} onValueChange={(value: string | null) => setZoneFilter(value ?? "all")}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Filter by zone" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value="all">All Zones</SelectItem>
-                  {zones?.map((zone) => (
-                    <SelectItem key={zone._id} value={zone._id}>
-                      {zone.name}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-            {(statusFilter !== "all" || zoneFilter !== "all") && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setStatusFilter("all");
-                  setZoneFilter("all");
-                }}
-              >
-                Clear filters
-              </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Agents Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span>
-              {isLoading
-                ? "Loading..."
-                : `${filteredAgents.length} Agent${filteredAgents.length !== 1 ? "s" : ""}`}
-            </span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="py-8 text-center">
-              <p className="text-muted-foreground text-sm">Loading agents...</p>
-            </div>
-          ) : filteredAgents.length === 0 ? (
-            <div className="py-8 text-center">
+            <div>
+              <h1 className="text-xl font-semibold">Agents</h1>
               <p className="text-muted-foreground text-sm">
-                No agents found.{" "}
-                {statusFilter !== "all" || zoneFilter !== "all"
-                  ? "Try adjusting your filters."
-                  : "Register a new agent to get started."}
+                Manage registered agents in ClawCity
               </p>
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-border border-b">
-                    <th className="text-muted-foreground px-4 py-3 text-left font-medium">
-                      Name
-                    </th>
-                    <th className="text-muted-foreground px-4 py-3 text-left font-medium">
-                      Status
-                    </th>
-                    <th className="text-muted-foreground px-4 py-3 text-left font-medium">
-                      Location
-                    </th>
-                    <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                      Cash
-                    </th>
-                    <th className="text-muted-foreground px-4 py-3 text-left font-medium">
-                      Health
-                    </th>
-                    <th className="text-muted-foreground px-4 py-3 text-left font-medium">
-                      Heat
-                    </th>
-                    <th className="text-muted-foreground px-4 py-3 text-right font-medium">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredAgents.map((agent) => (
-                    <tr
-                      key={agent._id}
-                      className="border-border hover:bg-muted/50 border-b transition-colors last:border-0"
-                    >
-                      <td className="px-4 py-3 font-medium">{agent.name}</td>
-                      <td className="px-4 py-3">
-                        <Badge variant={getStatusBadgeVariant(agent.status)}>
-                          {agent.status}
-                        </Badge>
-                      </td>
-                      <td className="text-muted-foreground px-4 py-3">
-                        {zoneMap.get(agent.locationZoneId) || "Unknown"}
-                      </td>
-                      <td className="px-4 py-3 text-right font-mono">
-                        ${agent.cash.toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <div className="bg-muted h-2 w-16 overflow-hidden rounded-full">
-                            <div
-                              className={`h-full transition-all ${
-                                agent.health > 60
-                                  ? "bg-green-500"
-                                  : agent.health > 30
-                                    ? "bg-yellow-500"
-                                    : "bg-red-500"
-                              }`}
-                              style={{ width: `${agent.health}%` }}
-                            />
-                          </div>
-                          <span className="text-muted-foreground w-8 text-xs">
-                            {agent.health}%
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <div
-                            className={`size-2.5 rounded-full ${getHeatColor(agent.heat)}`}
-                          />
-                          <span
-                            className={`text-xs font-medium ${getHeatTextColor(agent.heat)}`}
-                          >
-                            {agent.heat}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <Link href={`/agents/${agent._id}`}>
-                          <Button variant="ghost" size="sm">
-                            <EyeIcon className="mr-1 size-3.5" />
-                            View
-                          </Button>
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          </div>
+          <RegisterAgentDialog />
+        </div>
+
+        {/* Filters */}
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-2">
+                <FilterIcon className="text-muted-foreground size-4" />
+                <span className="text-muted-foreground text-sm font-medium">
+                  Filters:
+                </span>
+              </div>
+              <Select
+                value={statusFilter}
+                onValueChange={(value: string | null) =>
+                  setStatusFilter((value ?? "all") as AgentStatus | "all")
+                }
+              >
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue placeholder="Filter by status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {STATUS_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <Select
+                value={zoneFilter}
+                onValueChange={(value: string | null) => setZoneFilter(value ?? "all")}
+              >
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Filter by zone" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value="all">All Zones</SelectItem>
+                    {zones?.map((zone) => (
+                      <SelectItem key={zone._id} value={zone._id}>
+                        {zone.name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              {(statusFilter !== "all" || zoneFilter !== "all") && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setStatusFilter("all");
+                    setZoneFilter("all");
+                  }}
+                >
+                  Clear filters
+                </Button>
+              )}
             </div>
-          )}
-        </CardContent>
-      </Card>
-    </div></div>
+          </CardContent>
+        </Card>
+
+        {/* Agents Table */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span>
+                {isLoading
+                  ? "Loading..."
+                  : `${filteredAgents.length} Agent${filteredAgents.length !== 1 ? "s" : ""}`}
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="py-8 text-center">
+                <p className="text-muted-foreground text-sm">Loading agents...</p>
+              </div>
+            ) : filteredAgents.length === 0 ? (
+              <div className="py-8 text-center">
+                <p className="text-muted-foreground text-sm">
+                  No agents found.{" "}
+                  {statusFilter !== "all" || zoneFilter !== "all"
+                    ? "Try adjusting your filters."
+                    : "Register a new agent to get started."}
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-border border-b">
+                      <th className="text-muted-foreground px-4 py-3 text-left font-medium">
+                        Name
+                      </th>
+                      <th className="text-muted-foreground px-4 py-3 text-left font-medium">
+                        Status
+                      </th>
+                      <th className="text-muted-foreground px-4 py-3 text-left font-medium">
+                        Location
+                      </th>
+                      <th className="text-muted-foreground px-4 py-3 text-right font-medium">
+                        Cash
+                      </th>
+                      <th className="text-muted-foreground px-4 py-3 text-left font-medium">
+                        Health/Stamina
+                      </th>
+                      <th className="text-muted-foreground px-4 py-3 text-left font-medium">
+                        Heat
+                      </th>
+                      <th className="text-muted-foreground px-4 py-3 text-center font-medium">
+                        Rep
+                      </th>
+                      <th className="text-muted-foreground px-4 py-3 text-center font-medium">
+                        Skills
+                      </th>
+                      <th className="text-muted-foreground px-4 py-3 text-right font-medium">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredAgents.map((agent) => {
+                      const gang = agent.gangId ? gangMap.get(agent.gangId) : null;
+
+                      return (
+                        <tr
+                          key={agent._id}
+                          className="border-border hover:bg-muted/50 border-b transition-colors last:border-0 relative"
+                        >
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              {gang && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs"
+                                  style={{
+                                    borderColor: gang.color,
+                                    color: gang.color,
+                                  }}
+                                >
+                                  [{gang.tag}]
+                                </Badge>
+                              )}
+                              <span className="font-medium">{agent.name}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-col gap-1">
+                              <Badge variant={getStatusBadgeVariant(agent.status)}>
+                                {agent.status}
+                              </Badge>
+                              {agent.status === "busy" && agent.busyAction && (
+                                <span className="text-xs text-muted-foreground truncate max-w-[100px]">
+                                  {agent.busyAction}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="text-muted-foreground px-4 py-3">
+                            {zoneMap.get(agent.locationZoneId) || "Unknown"}
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono">
+                            ${agent.cash.toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="space-y-1">
+                              {/* Health bar */}
+                              <div className="flex items-center gap-2">
+                                <div className="bg-muted h-2 w-12 overflow-hidden rounded-full">
+                                  <div
+                                    className={`h-full transition-all ${
+                                      agent.health > 60
+                                        ? "bg-green-500"
+                                        : agent.health > 30
+                                          ? "bg-yellow-500"
+                                          : "bg-red-500"
+                                    }`}
+                                    style={{ width: `${agent.health}%` }}
+                                  />
+                                </div>
+                                <span className="text-muted-foreground text-xs w-6">
+                                  {agent.health}
+                                </span>
+                              </div>
+                              {/* Stamina bar */}
+                              <div className="flex items-center gap-2">
+                                <div className="bg-muted h-2 w-12 overflow-hidden rounded-full">
+                                  <div
+                                    className="h-full bg-yellow-500 transition-all"
+                                    style={{ width: `${agent.stamina}%` }}
+                                  />
+                                </div>
+                                <ZapIcon className="size-3 text-yellow-500" />
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <div
+                                className={`size-2.5 rounded-full ${getHeatColor(agent.heat)}`}
+                              />
+                              <span
+                                className={`text-xs font-medium ${getHeatTextColor(agent.heat)}`}
+                              >
+                                {agent.heat}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <StarIcon className="size-3 text-purple-500" />
+                              <span className="text-sm">{agent.reputation}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex justify-center">
+                              <SkillBars skills={agent.skills} />
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              {/* Inventory indicator */}
+                              {agent.inventory.length > 0 && (
+                                <div className="relative group">
+                                  <PackageIcon className="size-4 text-muted-foreground" />
+                                  <span className="absolute -top-1 -right-1 text-[10px] bg-primary text-primary-foreground rounded-full size-3.5 flex items-center justify-center">
+                                    {agent.inventory.reduce((sum, i) => sum + i.qty, 0)}
+                                  </span>
+                                </div>
+                              )}
+                              <Link href={`/agents/${agent._id}`}>
+                                <Button variant="ghost" size="sm">
+                                  <EyeIcon className="mr-1 size-3.5" />
+                                  View
+                                </Button>
+                              </Link>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
   );
 }

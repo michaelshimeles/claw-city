@@ -13,6 +13,7 @@ const ZONES_DATA = [
     type: "residential" as const,
     description:
       "A quiet neighborhood with affordable housing. The starting point for newcomers. Low risk, low reward, but connects to most of the city.",
+    mapCoords: { center: { lng: 0, lat: 0 }, radius: 0.8 },
   },
   {
     slug: "downtown",
@@ -20,6 +21,7 @@ const ZONES_DATA = [
     type: "commercial" as const,
     description:
       "The bustling heart of ClawCity. Banks, corporate offices, and high-end establishments. Good jobs for those with reputation, but police presence is moderate.",
+    mapCoords: { center: { lng: 2, lat: 0 }, radius: 1.0 },
   },
   {
     slug: "market",
@@ -27,6 +29,7 @@ const ZONES_DATA = [
     type: "commercial" as const,
     description:
       "The commercial hub where goods flow freely. Best prices for buying and selling. Shops of all kinds line the streets.",
+    mapCoords: { center: { lng: 1, lat: -1 }, radius: 0.7 },
   },
   {
     slug: "industrial",
@@ -34,6 +37,7 @@ const ZONES_DATA = [
     type: "industrial" as const,
     description:
       "Factories and warehouses dominate the landscape. Plenty of labor jobs available. The air is thick with smoke and opportunity.",
+    mapCoords: { center: { lng: -1, lat: -1 }, radius: 0.9 },
   },
   {
     slug: "docks",
@@ -41,6 +45,7 @@ const ZONES_DATA = [
     type: "industrial" as const,
     description:
       "Where ships come and go, so do opportunities both legal and otherwise. Low police presence makes it attractive for those seeking to operate in the shadows.",
+    mapCoords: { center: { lng: 0, lat: -2 }, radius: 0.8 },
   },
   {
     slug: "suburbs",
@@ -48,6 +53,7 @@ const ZONES_DATA = [
     type: "residential" as const,
     description:
       "Quiet streets and manicured lawns. Few jobs here, but it's safe. A good place to lay low when heat gets too high.",
+    mapCoords: { center: { lng: -1, lat: 1.5 }, radius: 0.9 },
   },
   {
     slug: "hospital",
@@ -55,6 +61,7 @@ const ZONES_DATA = [
     type: "government" as const,
     description:
       "The only place in the city where you can get proper medical treatment. Healing isn't cheap, but it beats the alternative.",
+    mapCoords: { center: { lng: -2, lat: 0 }, radius: 0.6 },
   },
   {
     slug: "police_station",
@@ -62,6 +69,7 @@ const ZONES_DATA = [
     type: "government" as const,
     description:
       "Home of ClawCity's finest. If you end up here, you've made some bad choices. Jail cells await those who push their luck too far.",
+    mapCoords: { center: { lng: 2.5, lat: 0.5 }, radius: 0.5 },
   },
 ];
 
@@ -1526,5 +1534,35 @@ export const initializeWorld = mutation({
     }
 
     return results;
+  },
+});
+
+/**
+ * Migration to add mapCoords to existing zones
+ * Run this once if zones already exist without mapCoords
+ */
+export const migrateZoneMapCoords = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const zones = await ctx.db.query("zones").collect();
+
+    // Build lookup from seed data
+    const coordsBySlug: Record<string, { center: { lng: number; lat: number }; radius: number }> = {};
+    for (const zone of ZONES_DATA) {
+      if (zone.mapCoords) {
+        coordsBySlug[zone.slug] = zone.mapCoords;
+      }
+    }
+
+    let updated = 0;
+    for (const zone of zones) {
+      const coords = coordsBySlug[zone.slug];
+      if (coords && !zone.mapCoords) {
+        await ctx.db.patch(zone._id, { mapCoords: coords });
+        updated++;
+      }
+    }
+
+    return { updated, total: zones.length };
   },
 });

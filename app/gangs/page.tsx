@@ -481,7 +481,7 @@ export default function GangsPage() {
                         index === 0 && "bg-yellow-500 text-yellow-950",
                         index === 1 && "bg-gray-400 text-gray-950",
                         index === 2 && "bg-orange-600 text-orange-950",
-                        index > 2 && "bg-zinc-700 text-zinc-300"
+                        index > 2 && "bg-muted text-muted-foreground"
                       )}
                     >
                       {index + 1}

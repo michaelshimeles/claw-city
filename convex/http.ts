@@ -241,6 +241,12 @@ export const getAgentStateByKeyHash = internalQuery({
         availableProperties,
         territory: territoryInfo,
       },
+      tax: {
+        taxOwed: agent.taxOwed ?? null,
+        taxDueTick: agent.taxDueTick ?? null,
+        taxGracePeriodEnd: agent.taxGracePeriodEnd ?? null,
+        hasTaxDue: (agent.taxOwed ?? 0) > 0,
+      },
     };
   },
 });

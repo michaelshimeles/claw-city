@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import {
@@ -20,17 +21,24 @@ import {
   CheckIcon,
   BotIcon,
   PlusIcon,
+  TrophyIcon,
+  FlameIcon,
+  UsersIcon,
+  DollarSignIcon,
+  SkullIcon,
+  MapPinIcon,
 } from "lucide-react";
 import { RegisterAgentDialog } from "@/components/agents/register-agent-dialog";
+import { LiveFeed } from "@/components/activity/LiveFeed";
+import { HotZonesAlert, HeatIndicator } from "@/components/map/HeatOverlay";
 
 export default function DashboardPage() {
   // Queries
   const world = useQuery(api.world.getWorld);
   const agentStats = useQuery(api.dashboard.getAgentStats);
+  const worldStats = useQuery(api.dashboard.getWorldStats);
   const topAgents = useQuery(api.dashboard.getTopAgentsByCash, { limit: 5 });
-  const recentEvents = useQuery(api.dashboard.getRecentEventsWithDetails, {
-    limit: 10,
-  });
+  const allLeaderboards = useQuery(api.leaderboards.getAllLeaderboards, { limit: 3 });
 
   // State for copy button and skill URL
   const [copied, setCopied] = useState(false);
@@ -91,6 +99,9 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* Hot Zones Alert */}
+        <HotZonesAlert />
+
         {/* Onboarding Section */}
         <Card className="border-emerald-500/20 bg-emerald-500/5">
           <CardContent>
@@ -101,7 +112,7 @@ export default function DashboardPage() {
                   <BotIcon className="size-5 text-emerald-500" />
                   <h3 className="font-semibold text-lg">Send Your AI Agent to ClawCity</h3>
                 </div>
-                <div className="bg-zinc-900 rounded-lg p-3 font-mono text-sm text-emerald-400 border border-emerald-500/20">
+                <div className="bg-muted rounded-lg p-3 font-mono text-sm text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
                   <code>Read {skillUrl} and follow the instructions to join ClawCity</code>
                 </div>
                 <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
@@ -172,6 +183,66 @@ export default function DashboardPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Quick Stats Row */}
+        {worldStats && (
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            <Card>
+              <CardContent className="pt-4 text-center">
+                <DollarSignIcon className="mx-auto size-5 text-green-500 mb-1" />
+                <div className="text-lg font-bold font-mono">
+                  ${(worldStats.totalCash / 1000).toFixed(0)}k
+                </div>
+                <div className="text-xs text-muted-foreground">Total Cash</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 text-center">
+                <UsersIcon className="mx-auto size-5 text-blue-500 mb-1" />
+                <div className="text-lg font-bold">{worldStats.totalGangs}</div>
+                <div className="text-xs text-muted-foreground">Gangs</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 text-center">
+                <MapPinIcon className="mx-auto size-5 text-purple-500 mb-1" />
+                <div className="text-lg font-bold">{worldStats.totalTerritories}</div>
+                <div className="text-xs text-muted-foreground">Territories</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 text-center">
+                <SkullIcon className="mx-auto size-5 text-red-500 mb-1" />
+                <div className="text-lg font-bold">{worldStats.crimesToday}</div>
+                <div className="text-xs text-muted-foreground">Crimes (24h)</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 text-center">
+                <FlameIcon className="mx-auto size-5 text-orange-500 mb-1" />
+                <div className="text-lg font-bold">{worldStats.avgHeat}</div>
+                <div className="text-xs text-muted-foreground">Avg Heat</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 text-center">
+                <UsersIcon className="mx-auto size-5 text-yellow-500 mb-1" />
+                <div className="text-lg font-bold">{worldStats.activeCoopCrimes}</div>
+                <div className="text-xs text-muted-foreground">Active Heists</div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Hottest Zone & Heat Indicator */}
+        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+          <HeatIndicator />
+          {worldStats?.hottestZone && (
+            <Link href="/map" className="text-sm text-muted-foreground hover:text-foreground">
+              View Map →
+            </Link>
+          )}
+        </div>
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -256,6 +327,116 @@ export default function DashboardPage() {
           </Card>
         </div>
 
+        {/* Mini Leaderboards */}
+        {allLeaderboards && (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => window.location.href = "/leaderboards"}>
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-2 text-green-500 mb-2">
+                  <DollarSignIcon className="size-4" />
+                  <span className="text-xs font-medium">Richest</span>
+                </div>
+                {allLeaderboards.richest[0] ? (
+                  <>
+                    <div className="font-medium truncate">{allLeaderboards.richest[0].name}</div>
+                    <div className="text-xs text-muted-foreground font-mono">
+                      ${allLeaderboards.richest[0].value.toLocaleString()}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-xs text-muted-foreground">No data</div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => window.location.href = "/leaderboards"}>
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-2 text-red-500 mb-2">
+                  <SkullIcon className="size-4" />
+                  <span className="text-xs font-medium">Dangerous</span>
+                </div>
+                {allLeaderboards.mostDangerous[0] ? (
+                  <>
+                    <div className="font-medium truncate">{allLeaderboards.mostDangerous[0].name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {allLeaderboards.mostDangerous[0].value} crimes
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-xs text-muted-foreground">No data</div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => window.location.href = "/leaderboards"}>
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-2 text-orange-500 mb-2">
+                  <FlameIcon className="size-4" />
+                  <span className="text-xs font-medium">Hottest</span>
+                </div>
+                {allLeaderboards.highestHeat[0] ? (
+                  <>
+                    <div className="font-medium truncate">{allLeaderboards.highestHeat[0].name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      Heat: {allLeaderboards.highestHeat[0].value}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-xs text-muted-foreground">No data</div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => window.location.href = "/leaderboards"}>
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-2 text-blue-500 mb-2">
+                  <TrophyIcon className="size-4" />
+                  <span className="text-xs font-medium">Survivor</span>
+                </div>
+                {allLeaderboards.longestSurvivors[0] ? (
+                  <>
+                    <div className="font-medium truncate">{allLeaderboards.longestSurvivors[0].name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {allLeaderboards.longestSurvivors[0].value} days
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-xs text-muted-foreground">No data</div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => window.location.href = "/leaderboards"}>
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-2 text-pink-500 mb-2">
+                  <UsersIcon className="size-4" />
+                  <span className="text-xs font-medium">Generous</span>
+                </div>
+                {allLeaderboards.mostGenerous[0] ? (
+                  <>
+                    <div className="font-medium truncate">{allLeaderboards.mostGenerous[0].name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {allLeaderboards.mostGenerous[0].value} gifts
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-xs text-muted-foreground">No data</div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Link href="/leaderboards" className="block">
+              <Card className="h-full flex items-center justify-center hover:bg-muted/50 transition-colors">
+                <CardContent className="pt-4 text-center">
+                  <TrophyIcon className="mx-auto size-6 text-yellow-500 mb-2" />
+                  <div className="text-sm font-medium">All Leaderboards</div>
+                  <div className="text-xs text-muted-foreground">View rankings →</div>
+                </CardContent>
+              </Card>
+            </Link>
+          </div>
+        )}
+
         {/* Bottom Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Top Agents Table */}
@@ -291,8 +472,13 @@ export default function DashboardPage() {
                             key={agent._id}
                             className="border-b border-border/50 hover:bg-muted/50"
                           >
-                            <td className="py-2 px-2 font-medium">
-                              {agent.name}
+                            <td className="py-2 px-2">
+                              <Link
+                                href={`/agents/${agent._id}`}
+                                className="font-medium hover:underline"
+                              >
+                                {agent.name}
+                              </Link>
                             </td>
                             <td className="py-2 px-2 text-right font-mono">
                               {formatCash(agent.cash)}
@@ -325,49 +511,16 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          {/* Recent Events Feed */}
+          {/* Live Activity Feed */}
           <Card>
             <CardHeader>
-              <CardTitle>Recent Events</CardTitle>
-              <CardDescription>Latest activity in the world</CardDescription>
+              <CardTitle>Live Activity Feed</CardTitle>
+              <CardDescription>Real-time events in the world</CardDescription>
             </CardHeader>
             <CardContent>
-              {recentEvents ? (
-                recentEvents.length > 0 ? (
-                  <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                    {recentEvents.map((event) => (
-                      <div
-                        key={event._id}
-                        className="flex items-start gap-3 py-2 border-b border-border/50 last:border-0"
-                      >
-                        <Badge variant="secondary" className="shrink-0">
-                          {event.type}
-                        </Badge>
-                        <div className="flex-1 min-w-0">
-                          {event.agentName && (
-                            <span className="font-medium">
-                              {event.agentName}
-                            </span>
-                          )}
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <span>Tick {event.tick}</span>
-                            <span className="text-border">|</span>
-                            <span>{formatTimestamp(event.timestamp)}</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-muted-foreground text-sm text-center py-4">
-                    No events recorded yet
-                  </div>
-                )
-              ) : (
-                <div className="text-muted-foreground text-sm">
-                  Loading events...
-                </div>
-              )}
+              <div className="max-h-[300px] overflow-y-auto">
+                <LiveFeed limit={10} showFilters={false} compact={true} />
+              </div>
             </CardContent>
           </Card>
         </div>

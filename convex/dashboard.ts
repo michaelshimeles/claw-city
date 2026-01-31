@@ -6,6 +6,49 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
 
+// Event category mappings for filtering
+const CRIME_EVENTS = [
+  "CRIME_ATTEMPTED",
+  "CRIME_SUCCESS",
+  "CRIME_FAILED",
+  "AGENT_ARRESTED",
+  "AGENT_RELEASED",
+  "COOP_CRIME_INITIATED",
+  "COOP_CRIME_JOINED",
+  "COOP_CRIME_EXECUTED",
+  "COOP_CRIME_SUCCESS",
+  "COOP_CRIME_FAILED",
+  "AGENT_ROBBED",
+  "ROB_ATTEMPT_FAILED",
+];
+
+const SOCIAL_EVENTS = [
+  "FRIEND_REQUEST_SENT",
+  "FRIEND_REQUEST_ACCEPTED",
+  "FRIEND_REQUEST_DECLINED",
+  "FRIEND_REMOVED",
+  "GANG_CREATED",
+  "GANG_INVITE_SENT",
+  "GANG_JOINED",
+  "GANG_LEFT",
+  "GANG_BETRAYED",
+  "CASH_GIFTED",
+  "ITEM_GIFTED",
+];
+
+const ECONOMIC_EVENTS = [
+  "BUY",
+  "SELL",
+  "JOB_STARTED",
+  "JOB_COMPLETED",
+  "BUSINESS_STARTED",
+  "PROPERTY_PURCHASED",
+  "PROPERTY_SOLD",
+  "PROPERTY_RENTED",
+  "TERRITORY_CLAIMED",
+  "TERRITORY_INCOME",
+];
+
 /**
  * Get agent statistics for the dashboard
  * Returns counts of agents by status
@@ -125,5 +168,256 @@ export const getRecentEventsWithDetails = query({
     return eventsWithDetails.sort(
       (a, b) => b.tick - a.tick || b.timestamp - a.timestamp
     );
+  },
+});
+
+/**
+ * Get recent activity feed with rich formatting and category filtering
+ */
+export const getRecentActivityFeed = query({
+  args: {
+    limit: v.optional(v.number()),
+    category: v.optional(
+      v.union(
+        v.literal("all"),
+        v.literal("crime"),
+        v.literal("social"),
+        v.literal("economic")
+      )
+    ),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit ?? 20;
+    const category = args.category ?? "all";
+
+    // Get events ordered by creation time (desc)
+    let events = await ctx.db.query("events").order("desc").take(limit * 3); // Fetch more to filter
+
+    // Filter by category if specified
+    if (category !== "all") {
+      const categoryEvents =
+        category === "crime"
+          ? CRIME_EVENTS
+          : category === "social"
+            ? SOCIAL_EVENTS
+            : ECONOMIC_EVENTS;
+      events = events.filter((e) => categoryEvents.includes(e.type));
+    }
+
+    events = events.slice(0, limit);
+
+    // Get all agents for name lookup
+    const agents = await ctx.db.query("agents").collect();
+    const agentsById: Record<string, string> = {};
+    for (const agent of agents) {
+      agentsById[agent._id.toString()] = agent.name;
+    }
+
+    // Get all zones for name lookup
+    const zones = await ctx.db.query("zones").collect();
+    const zonesById: Record<string, string> = {};
+    for (const zone of zones) {
+      zonesById[zone._id.toString()] = zone.name;
+    }
+
+    // Format events with rich details
+    const formattedEvents = events.map((event) => {
+      const agentName = event.agentId
+        ? agentsById[event.agentId.toString()] ?? null
+        : null;
+      const zoneName = event.zoneId
+        ? zonesById[event.zoneId.toString()] ?? null
+        : null;
+
+      // Determine category
+      let eventCategory: "crime" | "social" | "economic" | "other" = "other";
+      if (CRIME_EVENTS.includes(event.type)) eventCategory = "crime";
+      else if (SOCIAL_EVENTS.includes(event.type)) eventCategory = "social";
+      else if (ECONOMIC_EVENTS.includes(event.type)) eventCategory = "economic";
+
+      // Generate description based on event type
+      const description = formatEventDescription(
+        event.type,
+        agentName,
+        zoneName,
+        event.payload
+      );
+
+      // Determine if this is a success/failure event
+      const isSuccess =
+        event.type.includes("SUCCESS") ||
+        event.type.includes("COMPLETED") ||
+        event.type.includes("ACCEPTED");
+      const isFailure =
+        event.type.includes("FAILED") ||
+        event.type.includes("ARRESTED") ||
+        event.type.includes("DECLINED");
+
+      return {
+        _id: event._id,
+        type: event.type,
+        category: eventCategory,
+        tick: event.tick,
+        timestamp: event.timestamp,
+        agentId: event.agentId,
+        agentName,
+        zoneId: event.zoneId,
+        zoneName,
+        description,
+        payload: event.payload,
+        isSuccess,
+        isFailure,
+      };
+    });
+
+    return formattedEvents;
+  },
+});
+
+/**
+ * Format event description for human readability
+ */
+function formatEventDescription(
+  type: string,
+  agentName: string | null,
+  zoneName: string | null,
+  payload: unknown
+): string {
+  const agent = agentName ?? "An agent";
+  const zone = zoneName ?? "a zone";
+  const p = payload as Record<string, unknown> | null;
+
+  switch (type) {
+    case "CRIME_SUCCESS":
+      return `${agent} successfully committed ${p?.crimeType ?? "a crime"} in ${zone}`;
+    case "CRIME_FAILED":
+      return `${agent} failed to commit ${p?.crimeType ?? "a crime"} in ${zone}`;
+    case "AGENT_ARRESTED":
+      return `${agent} was arrested in ${zone}`;
+    case "AGENT_RELEASED":
+      return `${agent} was released from jail`;
+    case "JOB_COMPLETED":
+      return `${agent} completed a job in ${zone}`;
+    case "JOB_STARTED":
+      return `${agent} started a job in ${zone}`;
+    case "MOVE_COMPLETED":
+      return `${agent} arrived at ${zone}`;
+    case "BUY":
+      return `${agent} bought items in ${zone}`;
+    case "SELL":
+      return `${agent} sold items in ${zone}`;
+    case "GANG_CREATED":
+      return `${agent} created a new gang`;
+    case "GANG_JOINED":
+      return `${agent} joined a gang`;
+    case "GANG_LEFT":
+      return `${agent} left their gang`;
+    case "GANG_BETRAYED":
+      return `${agent} betrayed their gang!`;
+    case "FRIEND_REQUEST_ACCEPTED":
+      return `${agent} made a new friend`;
+    case "TERRITORY_CLAIMED":
+      return `A gang claimed territory in ${zone}`;
+    case "COOP_CRIME_SUCCESS":
+      return `A crew pulled off a ${p?.crimeType ?? "heist"} in ${zone}`;
+    case "COOP_CRIME_FAILED":
+      return `A crew failed their ${p?.crimeType ?? "heist"} in ${zone}`;
+    case "AGENT_ROBBED":
+      return `${agent} was robbed in ${zone}`;
+    case "CASH_GIFTED":
+      return `${agent} gifted cash to another agent`;
+    case "PROPERTY_PURCHASED":
+      return `${agent} purchased property in ${zone}`;
+    case "BUSINESS_STARTED":
+      return `${agent} started a business in ${zone}`;
+    default:
+      return `${agent}: ${type.replace(/_/g, " ").toLowerCase()}`;
+  }
+}
+
+/**
+ * Get world stats for dashboard widgets
+ */
+export const getWorldStats = query({
+  args: {},
+  handler: async (ctx) => {
+    const [world, agents, gangs, territories, coopActions] = await Promise.all([
+      ctx.db.query("world").first(),
+      ctx.db.query("agents").collect(),
+      ctx.db.query("gangs").collect(),
+      ctx.db.query("territories").collect(),
+      ctx.db
+        .query("coopActions")
+        .withIndex("by_status", (q) => q.eq("status", "recruiting"))
+        .collect(),
+    ]);
+
+    const currentTick = world?.tick ?? 0;
+
+    // Calculate aggregate stats
+    const totalCash = agents.reduce((sum, a) => sum + a.cash, 0);
+    const totalHeat = agents.reduce((sum, a) => sum + a.heat, 0);
+    const avgHeat = agents.length > 0 ? Math.round(totalHeat / agents.length) : 0;
+
+    // Find hottest zone
+    const zones = await ctx.db.query("zones").collect();
+    const heatByZone: Record<string, { total: number; count: number; name: string }> = {};
+    for (const zone of zones) {
+      heatByZone[zone._id.toString()] = { total: 0, count: 0, name: zone.name };
+    }
+    for (const agent of agents) {
+      const zoneId = agent.locationZoneId.toString();
+      if (heatByZone[zoneId]) {
+        heatByZone[zoneId].total += agent.heat;
+        heatByZone[zoneId].count++;
+      }
+    }
+
+    let hottestZone: { name: string; avgHeat: number } | null = null;
+    let maxAvgHeat = 0;
+    for (const data of Object.values(heatByZone)) {
+      if (data.count > 0) {
+        const avg = data.total / data.count;
+        if (avg > maxAvgHeat) {
+          maxAvgHeat = avg;
+          hottestZone = { name: data.name, avgHeat: Math.round(avg) };
+        }
+      }
+    }
+
+    // Get crimes today (events in last 24 hours of ticks)
+    const ticksIn24Hours = 1440;
+    const cutoffTick = Math.max(0, currentTick - ticksIn24Hours);
+    const recentEvents = await ctx.db
+      .query("events")
+      .withIndex("by_tick")
+      .filter((q) => q.gte(q.field("tick"), cutoffTick))
+      .collect();
+
+    const crimesToday = recentEvents.filter(
+      (e) => e.type === "CRIME_SUCCESS" || e.type === "CRIME_FAILED"
+    ).length;
+    const arrestsToday = recentEvents.filter(
+      (e) => e.type === "AGENT_ARRESTED"
+    ).length;
+
+    return {
+      currentTick,
+      totalAgents: agents.length,
+      totalCash,
+      avgHeat,
+      totalGangs: gangs.length,
+      totalTerritories: territories.length,
+      activeCoopCrimes: coopActions.length,
+      hottestZone,
+      crimesToday,
+      arrestsToday,
+      agentsByStatus: {
+        idle: agents.filter((a) => a.status === "idle").length,
+        busy: agents.filter((a) => a.status === "busy").length,
+        jailed: agents.filter((a) => a.status === "jailed").length,
+        hospitalized: agents.filter((a) => a.status === "hospitalized").length,
+      },
+    };
   },
 });

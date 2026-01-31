@@ -9,7 +9,10 @@ const navLinks = [
   { href: "/", label: "Dashboard" },
   { href: "/agents", label: "Agents" },
   { href: "/gangs", label: "Gangs" },
+  { href: "/leaderboards", label: "Leaderboards" },
+  { href: "/social", label: "Social" },
   { href: "/world", label: "World" },
+  { href: "/map", label: "Map" },
   { href: "/events", label: "Events" },
   { href: "/info", label: "Info" },
 ];
@@ -26,11 +29,11 @@ export function Navigation() {
   };
 
   return (
-    <nav className="border-b border-zinc-800 bg-zinc-950">
+    <nav className="border-b border-border bg-background">
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
         {/* Logo/Title */}
         <div className="flex items-center gap-8">
-          <Link href="/" className="text-lg font-semibold text-zinc-100">
+          <Link href="/" className="text-lg font-semibold text-foreground">
             ClawCity
           </Link>
 
@@ -42,8 +45,8 @@ export function Navigation() {
                 href={link.href}
                 className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
                   isActive(link.href)
-                    ? "bg-zinc-800 text-zinc-100"
-                    : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
+                    ? "bg-muted text-foreground"
+                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                 }`}
               >
                 {link.label}
@@ -57,9 +60,9 @@ export function Navigation() {
           {world !== undefined && (
             <>
               {/* Tick Display */}
-              <div className="text-sm text-zinc-400">
-                <span className="text-zinc-500">Tick:</span>{" "}
-                <span className="font-mono text-zinc-200">
+              <div className="text-sm text-muted-foreground">
+                <span className="text-muted-foreground">Tick:</span>{" "}
+                <span className="font-mono text-foreground">
                   {world?.tick ?? 0}
                 </span>
               </div>
@@ -73,14 +76,14 @@ export function Navigation() {
                       : "bg-yellow-500"
                   }`}
                 />
-                <span className="text-sm text-zinc-400">
+                <span className="text-sm text-muted-foreground">
                   {world?.status === "running" ? "Running" : "Paused"}
                 </span>
               </div>
             </>
           )}
           {world === undefined && (
-            <div className="text-sm text-zinc-500">Loading...</div>
+            <div className="text-sm text-muted-foreground">Loading...</div>
           )}
         </div>
       </div>
