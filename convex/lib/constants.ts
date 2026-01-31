@@ -392,6 +392,9 @@ export const ERROR_CODES = {
   INVALID_DISGUISE_TYPE: "Invalid disguise type",
   NO_CONTRACT_AVAILABLE: "No contract available for this target",
   CONTRACT_ALREADY_ACCEPTED: "Contract already accepted",
+  // Journal/Reflection errors
+  MISSING_REFLECTION: "reflection is required - explain why you're taking this action",
+  INVALID_REFLECTION: "reflection must be between 10-1000 characters",
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_CODES;

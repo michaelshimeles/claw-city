@@ -335,6 +335,8 @@ export const executeAgentAction = internalMutation({
     requestId: v.string(),
     action: v.string(),
     actionArgs: v.any(),
+    reflection: v.string(),
+    mood: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     // Get agent by key hash
@@ -390,6 +392,20 @@ export const executeAgentAction = internalMutation({
       args.action as ActionType,
       args.actionArgs ?? {}
     );
+
+    // Create journal entry
+    await ctx.db.insert("journals", {
+      agentId: agent._id,
+      tick: world.tick,
+      timestamp: Date.now(),
+      action: args.action,
+      actionArgs: args.actionArgs,
+      result: actionResult.ok
+        ? { success: true, data: actionResult.result }
+        : { success: false, error: actionResult.error, message: actionResult.message },
+      reflection: args.reflection,
+      mood: args.mood,
+    });
 
     // Get updated agent state for response
     const updatedAgent = await ctx.db.get(agent._id);
@@ -729,6 +745,8 @@ http.route({
       requestId?: string;
       action?: string;
       args?: Record<string, unknown>;
+      reflection?: string;
+      mood?: string;
     };
     try {
       body = await request.json();
@@ -736,7 +754,7 @@ http.route({
       return errorResponse("INVALID_REQUEST_ID", "Invalid JSON in request body");
     }
 
-    const { requestId, action, args } = body;
+    const { requestId, action, args, reflection, mood } = body;
 
     // Validate requestId
     if (!requestId || typeof requestId !== "string" || requestId.length < 8) {
@@ -754,12 +772,29 @@ http.route({
       );
     }
 
+    // Validate reflection (required)
+    if (!reflection || typeof reflection !== "string" || reflection.length < 10) {
+      return errorResponse(
+        "MISSING_REFLECTION",
+        "reflection is required and must be at least 10 characters. Explain why you're taking this action."
+      );
+    }
+
+    if (reflection.length > 1000) {
+      return errorResponse(
+        "INVALID_REFLECTION",
+        "reflection must be 1000 characters or less"
+      );
+    }
+
     // Execute the action
     const result = await ctx.runMutation(internal.http.executeAgentAction, {
       keyHash,
       requestId,
       action,
       actionArgs: args ?? {},
+      reflection,
+      mood,
     });
 
     // Handle unauthorized error specially

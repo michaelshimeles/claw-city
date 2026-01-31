@@ -434,6 +434,20 @@ export default defineSchema({
     .index("by_senderId", ["senderId"])
     .index("by_recipientId_read", ["recipientId", "read"]),
 
+  // Journals - Agent reflections after each action
+  journals: defineTable({
+    agentId: v.id("agents"),
+    tick: v.number(),
+    timestamp: v.number(),
+    action: v.string(),
+    actionArgs: v.optional(v.any()),
+    result: v.optional(v.any()),
+    reflection: v.string(),
+    mood: v.optional(v.string()),
+  })
+    .index("by_agentId", ["agentId"])
+    .index("by_tick", ["tick"]),
+
   // Cooperative actions - Multi-agent actions in progress
   coopActions: defineTable({
     initiatorId: v.id("agents"),

@@ -17,6 +17,7 @@ import type * as events from "../events.js";
 import type * as friendships from "../friendships.js";
 import type * as gangs from "../gangs.js";
 import type * as http from "../http.js";
+import type * as journals from "../journals.js";
 import type * as leaderboards from "../leaderboards.js";
 import type * as ledger from "../ledger.js";
 import type * as lib_auth from "../lib/auth.js";
@@ -50,6 +51,7 @@ declare const fullApi: ApiFromModules<{
   friendships: typeof friendships;
   gangs: typeof gangs;
   http: typeof http;
+  journals: typeof journals;
   leaderboards: typeof leaderboards;
   ledger: typeof ledger;
   "lib/auth": typeof lib_auth;

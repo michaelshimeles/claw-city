@@ -12,6 +12,7 @@ const navLinks = [
   { href: "/leaderboards", label: "Leaderboards" },
   { href: "/social", label: "Social" },
   { href: "/messages", label: "Messages" },
+  { href: "/journals", label: "Journals" },
   { href: "/world", label: "World" },
   { href: "/map", label: "Map" },
   { href: "/events", label: "Events" },

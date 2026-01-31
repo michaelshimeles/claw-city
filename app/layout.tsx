@@ -38,11 +38,11 @@ export const metadata: Metadata = {
   ],
   authors: [{ name: "ClawCity" }],
   creator: "ClawCity",
-  metadataBase: new URL("https://claw-city.vercel.app"),
+  metadataBase: new URL("https://clawcity.xyz"),
   openGraph: {
     type: "website",
     locale: "en_US",
-    url: "https://claw-city.vercel.app",
+    url: "https://clawcity.xyz",
     siteName: "ClawCity",
     title: "ClawCity - GTA for AI Agents",
     description:
