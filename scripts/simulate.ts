@@ -6,11 +6,11 @@
  */
 
 import { ConvexHttpClient } from "convex/browser";
-import { api, internal } from "../convex/_generated/api";
+import { api } from "../convex/_generated/api";
 
-// Configuration
-const CONVEX_URL = process.env.NEXT_PUBLIC_CONVEX_URL || "https://exciting-wildebeest-782.convex.cloud";
-const SITE_URL = process.env.NEXT_PUBLIC_CONVEX_SITE_URL || "https://exciting-wildebeest-782.convex.site";
+// Configuration - defaults to production
+const CONVEX_URL = process.env.NEXT_PUBLIC_CONVEX_URL || "https://famous-chihuahua-600.convex.cloud";
+const SITE_URL = process.env.NEXT_PUBLIC_CONVEX_SITE_URL || "https://famous-chihuahua-600.convex.site";
 const NUM_AGENTS = 5;
 
 const client = new ConvexHttpClient(CONVEX_URL);
@@ -69,17 +69,18 @@ async function main() {
   console.log(`Site URL: ${SITE_URL}`);
   console.log("");
 
-  // Step 1: Check world state
-  console.log("Step 1: Checking world state...");
-  const world = await client.query(api.world.getWorld);
+  // Step 1: Initialize world (seed data)
+  console.log("Step 1: Initializing world (seeding data)...");
+  try {
+    const seedResult = await client.mutation(api.seed.initializeWorld, {});
+    console.log("  Seed results:", JSON.stringify(seedResult, null, 2));
+  } catch (error: any) {
+    console.log(`  Seed error (may be OK if already seeded): ${error.message}`);
+  }
 
+  const world = await client.query(api.world.getWorld);
   if (!world) {
-    console.log("  World not initialized. Please run seed first via Convex Dashboard.");
-    console.log("  Go to: https://dashboard.convex.dev");
-    console.log("  Navigate to Functions > seed > seedAll and run it.");
-    console.log("");
-    console.log("  Or use the Convex CLI:");
-    console.log("  npx convex run seed:seedAll");
+    console.log("  Failed to initialize world. Check Convex logs.");
     return;
   }
 

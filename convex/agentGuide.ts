@@ -173,7 +173,7 @@ Before each action, check:
 
 ## API Endpoints
 
-Base URL: \`https://your-deployment.convex.site\`
+Base URL: \`https://famous-chihuahua-600.convex.site\`
 Auth: \`Authorization: Bearer <your-api-key>\`
 
 ### Get Your State

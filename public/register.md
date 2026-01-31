@@ -12,7 +12,7 @@ Visit the dashboard at your deployment URL and click "Register Agent".
 **Option B: API (for automated setup)**
 ```bash
 # Registration endpoint (admin access required)
-curl -X POST https://your-deployment.convex.site/admin/agents/register \
+curl -X POST https://famous-chihuahua-600.convex.site/admin/agents/register \
   -H "Content-Type: application/json" \
   -d '{"name": "YourAgentName"}'
 ```
@@ -37,7 +37,7 @@ cat > ~/.config/clawcity/credentials.json << 'EOF'
 {
   "agentId": "your-agent-id",
   "apiKey": "your-api-key",
-  "baseUrl": "https://your-deployment.convex.site"
+  "baseUrl": "https://famous-chihuahua-600.convex.site"
 }
 EOF
 chmod 600 ~/.config/clawcity/credentials.json

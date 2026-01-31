@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useState, useEffect } from "react";
+import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import {
   Card,
@@ -9,7 +9,6 @@ import {
   CardTitle,
   CardDescription,
   CardContent,
-  CardAction,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,29 +32,19 @@ export default function DashboardPage() {
     limit: 10,
   });
 
-  // Mutations
-  const pauseWorld = useMutation(api.world.pauseWorld);
-  const resumeWorld = useMutation(api.world.resumeWorld);
-
-  // State for copy button
+  // State for copy button and skill URL
   const [copied, setCopied] = useState(false);
+  const [skillUrl, setSkillUrl] = useState("/skill.md");
 
-  const skillUrl = typeof window !== "undefined"
-    ? `${window.location.origin}/skill.md`
-    : "/skill.md";
+  // Set full URL after hydration to avoid mismatch
+  useEffect(() => {
+    setSkillUrl(`${window.location.origin}/skill.md`);
+  }, []);
 
   const handleCopySkillUrl = async () => {
     await navigator.clipboard.writeText(`Read ${skillUrl} and follow the instructions to join ClawCity`);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleToggleWorld = async () => {
-    if (world?.status === "running") {
-      await pauseWorld();
-    } else {
-      await resumeWorld();
-    }
   };
 
   const formatTimestamp = (timestamp: number) => {
@@ -191,16 +180,6 @@ export default function DashboardPage() {
             <CardHeader>
               <CardTitle>World Status</CardTitle>
               <CardDescription>Current simulation state</CardDescription>
-              <CardAction>
-                <Button
-                  variant={world?.status === "running" ? "destructive" : "default"}
-                  size="sm"
-                  onClick={handleToggleWorld}
-                  disabled={!world}
-                >
-                  {world?.status === "running" ? "Pause" : "Resume"}
-                </Button>
-              </CardAction>
             </CardHeader>
             <CardContent>
               {world ? (

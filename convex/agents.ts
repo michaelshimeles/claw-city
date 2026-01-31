@@ -505,3 +505,40 @@ export const setBusy = internalMutation({
     });
   },
 });
+
+/**
+ * Clean up duplicate agents - keeps the one with highest cash for each name
+ */
+export const cleanupDuplicates = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const agents = await ctx.db.query("agents").collect();
+
+    // Group by name
+    const byName: Record<string, typeof agents> = {};
+    for (const agent of agents) {
+      if (!byName[agent.name]) byName[agent.name] = [];
+      byName[agent.name].push(agent);
+    }
+
+    let deleted = 0;
+    const kept: string[] = [];
+
+    // For duplicates, keep the one with higher cash
+    for (const [name, dupes] of Object.entries(byName)) {
+      if (dupes.length > 1) {
+        // Sort by cash descending, keep highest
+        dupes.sort((a, b) => b.cash - a.cash);
+        kept.push(`${name}: $${dupes[0].cash}`);
+
+        // Delete the rest
+        for (let i = 1; i < dupes.length; i++) {
+          await ctx.db.delete(dupes[i]._id);
+          deleted++;
+        }
+      }
+    }
+
+    return { deleted, kept };
+  },
+});

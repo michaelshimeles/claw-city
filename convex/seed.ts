@@ -1077,3 +1077,163 @@ export const clearAllSeedData = internalMutation({
     };
   },
 });
+
+// ============================================================================
+// PUBLIC SEED MUTATION (for easy initialization)
+// ============================================================================
+
+import { mutation } from "./_generated/server";
+
+/**
+ * Public mutation to seed the database
+ * This is a convenience wrapper around seedAll for easy initialization
+ */
+export const initializeWorld = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const results: Record<string, unknown> = {};
+
+    // Seed in order of dependencies
+    // 1. World config (no dependencies)
+    const existingWorld = await ctx.db.query("world").first();
+    if (!existingWorld) {
+      await ctx.db.insert("world", {
+        tick: 0,
+        tickMs: 60000,
+        status: "paused",
+        seed: `clawcity-${Date.now()}`,
+        lastTickAt: Date.now(),
+        config: {
+          startingCash: 500,
+          startingZone: "residential",
+          heatDecayIdle: 1,
+          heatDecayBusy: 0.2,
+          arrestThreshold: 60,
+          maxHeat: 100,
+        },
+      });
+      results.world = { seeded: true };
+    } else {
+      results.world = { seeded: false, reason: "already exists" };
+    }
+
+    // 2. Zones (no dependencies)
+    const existingZones = await ctx.db.query("zones").collect();
+    const zoneIdBySlug: Record<string, Id<"zones">> = {};
+    if (existingZones.length === 0) {
+      for (const zone of ZONES_DATA) {
+        const id = await ctx.db.insert("zones", zone);
+        zoneIdBySlug[zone.slug] = id;
+      }
+      results.zones = { seeded: true, count: ZONES_DATA.length };
+    } else {
+      for (const zone of existingZones) {
+        zoneIdBySlug[zone.slug] = zone._id;
+      }
+      results.zones = { seeded: false, count: existingZones.length };
+    }
+
+    // 3. Items (no dependencies)
+    const existingItems = await ctx.db.query("items").collect();
+    const itemIdBySlug: Record<string, Id<"items">> = {};
+    if (existingItems.length === 0) {
+      for (const item of ITEMS_DATA) {
+        const id = await ctx.db.insert("items", item);
+        itemIdBySlug[item.slug] = id;
+      }
+      results.items = { seeded: true, count: ITEMS_DATA.length };
+    } else {
+      for (const item of existingItems) {
+        itemIdBySlug[item.slug] = item._id;
+      }
+      results.items = { seeded: false, count: existingItems.length };
+    }
+
+    // 4. Zone edges (depends on zones)
+    const existingEdges = await ctx.db.query("zoneEdges").collect();
+    if (existingEdges.length === 0) {
+      let edgeCount = 0;
+      for (const [fromSlug, toSlug, timeCostTicks, cashCost, heatRisk] of ZONE_EDGES_DATA) {
+        const fromZoneId = zoneIdBySlug[fromSlug];
+        const toZoneId = zoneIdBySlug[toSlug];
+        if (fromZoneId && toZoneId) {
+          await ctx.db.insert("zoneEdges", {
+            fromZoneId,
+            toZoneId,
+            timeCostTicks,
+            cashCost,
+            heatRisk,
+          });
+          edgeCount++;
+        }
+      }
+      results.zoneEdges = { seeded: true, count: edgeCount };
+    } else {
+      results.zoneEdges = { seeded: false, count: existingEdges.length };
+    }
+
+    // 5. Jobs (depends on zones)
+    const existingJobs = await ctx.db.query("jobs").collect();
+    if (existingJobs.length === 0) {
+      let jobCount = 0;
+      for (const job of JOBS_DATA) {
+        const zoneId = zoneIdBySlug[job.zoneSlug];
+        if (zoneId) {
+          await ctx.db.insert("jobs", {
+            zoneId,
+            type: job.type,
+            title: job.title,
+            wage: job.wage,
+            durationTicks: job.durationTicks,
+            requirements: job.requirements,
+            staminaCost: job.staminaCost,
+            active: true,
+          });
+          jobCount++;
+        }
+      }
+      results.jobs = { seeded: true, count: jobCount };
+    } else {
+      results.jobs = { seeded: false, count: existingJobs.length };
+    }
+
+    // 6. Businesses (depends on zones and items)
+    const existingBusinesses = await ctx.db.query("businesses").collect();
+    if (existingBusinesses.length === 0) {
+      let businessCount = 0;
+      for (const business of BUSINESSES_DATA) {
+        const zoneId = zoneIdBySlug[business.zoneSlug];
+        if (!zoneId) continue;
+
+        const inventory: { itemId: Id<"items">; qty: number; price: number }[] = [];
+        for (const inv of business.inventory) {
+          const itemId = itemIdBySlug[inv.itemSlug];
+          if (itemId) {
+            inventory.push({ itemId, qty: inv.qty, price: inv.price });
+          }
+        }
+
+        await ctx.db.insert("businesses", {
+          ownerAgentId: null,
+          zoneId,
+          type: business.type,
+          name: business.name,
+          cashOnHand: business.cashOnHand,
+          inventory,
+          reputation: 50,
+          status: "open",
+          metrics: {
+            totalRevenue: 0,
+            totalCustomers: 0,
+          },
+        });
+        businessCount++;
+      }
+      results.businesses = { seeded: true, count: businessCount };
+    } else {
+      results.businesses = { seeded: false, count: existingBusinesses.length };
+    }
+
+    return results;
+  },
+});

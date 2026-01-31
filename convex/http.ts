@@ -550,6 +550,60 @@ http.route({
 });
 
 // ============================================================================
+// POST /agent/register - Register a new agent (no auth required)
+// ============================================================================
+
+http.route({
+  path: "/agent/register",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    // Parse request body
+    let body: { name?: string };
+    try {
+      body = await request.json();
+    } catch {
+      return errorResponse("INVALID_REQUEST_ID", "Invalid JSON in request body");
+    }
+
+    const { name } = body;
+
+    if (!name || typeof name !== "string" || name.trim().length < 2) {
+      return errorResponse(
+        "INVALID_ACTION",
+        "Name must be a string with at least 2 characters"
+      );
+    }
+
+    try {
+      // Import and call the registerAgent mutation
+      const { api } = await import("./_generated/api");
+      const result = await ctx.runMutation(api.agents.registerAgent, {
+        name: name.trim(),
+      });
+
+      return jsonResponse({
+        ok: true,
+        agentId: result.agentId,
+        apiKey: result.apiKey,
+        message: "Agent registered successfully. Save your API key - it will only be shown once!",
+      });
+    } catch (error: any) {
+      return errorResponse(
+        "INTERNAL_ERROR",
+        error.message || "Failed to register agent",
+        500
+      );
+    }
+  }),
+});
+
+http.route({
+  path: "/agent/register",
+  method: "OPTIONS",
+  handler: httpAction(async () => corsResponse("POST, OPTIONS")),
+});
+
+// ============================================================================
 // SKILL DOCUMENTATION ROUTES (no auth required)
 // ============================================================================
 

@@ -6,6 +6,7 @@
 
 import { internalMutation, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
+import { Doc, Id } from "./_generated/dataModel";
 import { createTickRng } from "./lib/rng";
 import { DEFAULTS } from "./lib/constants";
 
@@ -51,11 +52,96 @@ export const resolveBusyAgents = internalMutation({
 
     for (const agent of busyAgents) {
       if (agent.busyUntilTick !== null && agent.busyUntilTick <= currentTick) {
-        // Transition agent to idle
+        // Check what action they were doing
+        const busyAction = agent.busyAction;
+        let newCash = agent.cash;
+        let newStats = { ...agent.stats };
+
+        // Handle job completion - pay wages
+        if (busyAction && busyAction.startsWith("JOB:")) {
+          const jobId = busyAction.replace("JOB:", "") as Id<"jobs">;
+          try {
+            const job = await ctx.db.get(jobId) as Doc<"jobs"> | null;
+            if (job) {
+              // Pay wages
+              newCash = agent.cash + job.wage;
+              newStats.lifetimeEarnings = (agent.stats.lifetimeEarnings || 0) + job.wage;
+              newStats.jobsCompleted = (agent.stats.jobsCompleted || 0) + 1;
+
+              // Log JOB_COMPLETED event
+              await ctx.db.insert("events", {
+                tick: currentTick,
+                timestamp: Date.now(),
+                type: "JOB_COMPLETED",
+                agentId: agent._id,
+                zoneId: job.zoneId,
+                entityId: job._id,
+                payload: {
+                  jobId: job._id,
+                  jobTitle: job.title,
+                  wage: job.wage,
+                  newCash,
+                },
+                requestId: null,
+              });
+
+              // Log in ledger
+              await ctx.db.insert("ledger", {
+                tick: currentTick,
+                agentId: agent._id,
+                type: "credit",
+                amount: job.wage,
+                reason: "JOB_WAGE",
+                balance: newCash,
+                refEventId: null,
+              });
+            }
+          } catch (e) {
+            // Job may have been deleted, just continue
+          }
+        }
+
+        // Handle MOVE completion - update agent location
+        if (busyAction && busyAction.startsWith("MOVE:")) {
+          const toZoneSlug = busyAction.replace("MOVE:", "");
+          try {
+            const zone = await ctx.db
+              .query("zones")
+              .withIndex("by_slug", (q) => q.eq("slug", toZoneSlug))
+              .first();
+            if (zone) {
+              // Update agent location
+              await ctx.db.patch(agent._id, {
+                locationZoneId: zone._id,
+              });
+
+              // Log MOVE_COMPLETED event
+              await ctx.db.insert("events", {
+                tick: currentTick,
+                timestamp: Date.now(),
+                type: "MOVE_COMPLETED",
+                agentId: agent._id,
+                zoneId: zone._id,
+                entityId: null,
+                payload: {
+                  arrivedAt: zone.slug,
+                  zoneName: zone.name,
+                },
+                requestId: null,
+              });
+            }
+          } catch (e) {
+            // Zone may have been deleted, just continue
+          }
+        }
+
+        // Transition agent to idle with updated stats
         await ctx.db.patch(agent._id, {
           status: "idle",
           busyUntilTick: null,
           busyAction: null,
+          cash: newCash,
+          stats: newStats,
         });
 
         resolvedCount++;

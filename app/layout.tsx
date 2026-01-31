@@ -3,8 +3,9 @@ import { Geist, Geist_Mono, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { ConvexClientProvider } from "@/lib/convex";
 import { Navigation } from "@/components/layout/Navigation";
+import { Analytics } from "@vercel/analytics/next";
 
-const jetbrainsMono = JetBrains_Mono({subsets:['latin'],variable:'--font-sans'});
+const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-sans' });
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,6 +35,7 @@ export default function RootLayout({
         <ConvexClientProvider>
           <Navigation />
           <main>{children}</main>
+          <Analytics />
         </ConvexClientProvider>
       </body>
     </html>

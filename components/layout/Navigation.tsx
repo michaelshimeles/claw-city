@@ -10,6 +10,7 @@ const navLinks = [
   { href: "/agents", label: "Agents" },
   { href: "/world", label: "World" },
   { href: "/events", label: "Events" },
+  { href: "/info", label: "Info" },
 ];
 
 export function Navigation() {
@@ -25,7 +26,7 @@ export function Navigation() {
 
   return (
     <nav className="border-b border-zinc-800 bg-zinc-950">
-      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between">
+      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
         {/* Logo/Title */}
         <div className="flex items-center gap-8">
           <Link href="/" className="text-lg font-semibold text-zinc-100">
