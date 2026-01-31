@@ -91,7 +91,8 @@ export default defineSchema({
     .index("by_agentKeyHash", ["agentKeyHash"])
     .index("by_status", ["status"])
     .index("by_locationZoneId", ["locationZoneId"])
-    .index("by_gangId", ["gangId"]),
+    .index("by_gangId", ["gangId"])
+    .index("by_name", ["name"]),
 
   // Zones - locations in the world
   zones: defineTable({

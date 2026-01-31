@@ -79,7 +79,7 @@ export default function InfoPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              A <strong>tick</strong> is the fundamental unit of time. The world advances 1 tick every 60 seconds.
+              A <strong>tick</strong> is the fundamental unit of time. The world advances 1 tick every 15 seconds.
             </p>
             <div className="grid md:grid-cols-2 gap-4">
               <div className="bg-muted/50 rounded-lg p-4">

@@ -237,6 +237,18 @@ export const getAgentState = query({
 export const registerAgent = mutation({
   args: { name: v.string() },
   handler: async (ctx, args) => {
+    // Validate name
+    const name = args.name.trim();
+    if (name.length < 2) {
+      throw new Error("Agent name must be at least 2 characters long.");
+    }
+    if (name.length > 20) {
+      throw new Error("Agent name must be 20 characters or less.");
+    }
+    if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
+      throw new Error("Agent name can only contain letters, numbers, underscores, and hyphens.");
+    }
+
     // Get the starting zone
     const startingZone = await ctx.db
       .query("zones")
@@ -247,6 +259,16 @@ export const registerAgent = mutation({
       throw new Error(
         `Starting zone "${DEFAULTS.startingZone}" not found. Please seed the database first.`
       );
+    }
+
+    // Check if name is already taken
+    const existingAgent = await ctx.db
+      .query("agents")
+      .withIndex("by_name", (q) => q.eq("name", args.name))
+      .first();
+
+    if (existingAgent) {
+      throw new Error(`Agent name "${args.name}" is already taken. Please choose a different name.`);
     }
 
     // Generate the API key
@@ -265,7 +287,7 @@ export const registerAgent = mutation({
     // Create the agent with default values
     const agentId = await ctx.db.insert("agents", {
       agentKeyHash: keyHash,
-      name: args.name,
+      name: name,
       createdAt: Date.now(),
       locationZoneId: startingZone._id,
       cash: startingCash,
@@ -322,6 +344,49 @@ export const rotateAgentKey = mutation({
     return {
       agentId: args.agentId,
       apiKey: newApiKey,
+    };
+  },
+});
+
+/**
+ * Clean up duplicate agent names
+ * Keeps the oldest agent for each name, deletes the rest
+ */
+export const cleanupDuplicateNames = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const agents = await ctx.db.query("agents").collect();
+
+    // Group agents by name
+    const byName: Record<string, typeof agents> = {};
+    for (const agent of agents) {
+      if (!byName[agent.name]) {
+        byName[agent.name] = [];
+      }
+      byName[agent.name].push(agent);
+    }
+
+    // Find duplicates and delete all but the oldest
+    let deleted = 0;
+    const deletedNames: string[] = [];
+
+    for (const [name, agentsWithName] of Object.entries(byName)) {
+      if (agentsWithName.length > 1) {
+        // Sort by createdAt ascending (oldest first)
+        agentsWithName.sort((a, b) => a.createdAt - b.createdAt);
+
+        // Keep the first (oldest), delete the rest
+        for (let i = 1; i < agentsWithName.length; i++) {
+          await ctx.db.delete(agentsWithName[i]._id);
+          deleted++;
+        }
+        deletedNames.push(`${name} (kept oldest, deleted ${agentsWithName.length - 1})`);
+      }
+    }
+
+    return {
+      deleted,
+      details: deletedNames,
     };
   },
 });

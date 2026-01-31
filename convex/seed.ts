@@ -1302,7 +1302,7 @@ export const seedWorld = internalMutation({
 
     await ctx.db.insert("world", {
       tick: 0,
-      tickMs: 60000, // 1 minute per tick
+      tickMs: 15000, // 15 seconds per tick
       status: "paused",
       seed: `clawcity-${Date.now()}`,
       lastTickAt: Date.now(),
@@ -1337,7 +1337,7 @@ export const seedAll = internalMutation({
     if (!existingWorld) {
       await ctx.db.insert("world", {
         tick: 0,
-        tickMs: 60000,
+        tickMs: 15000,
         status: "paused",
         seed: `clawcity-${Date.now()}`,
         lastTickAt: Date.now(),
@@ -1633,7 +1633,7 @@ export const initializeWorld = mutation({
     if (!existingWorld) {
       await ctx.db.insert("world", {
         tick: 0,
-        tickMs: 60000,
+        tickMs: 15000,
         status: "paused",
         seed: `clawcity-${Date.now()}`,
         lastTickAt: Date.now(),
