@@ -273,8 +273,6 @@ export const EVENT_TYPES = [
   "VEHICLE_STEAL_FAILED",
   "CONTRACT_ACCEPTED",
   "CONTRACT_COMPLETED",
-  "NPC_SPAWNED",
-  "NPC_ACTION",
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -750,19 +748,6 @@ export const DISGUISE_TYPES = ["basic", "professional", "elite"] as const;
 export type DisguiseType = (typeof DISGUISE_TYPES)[number];
 
 /**
- * NPC behavior types
- */
-export const NPC_BEHAVIOR_TYPES = [
-  "criminal",
-  "worker",
-  "trader",
-  "social",
-  "chaotic",
-] as const;
-
-export type NPCBehaviorType = (typeof NPC_BEHAVIOR_TYPES)[number];
-
-/**
  * Gambling risk levels
  */
 export const GAMBLE_RISK_TYPES = [
@@ -850,57 +835,4 @@ export const GTA_DEFAULTS = {
   vehicleStealHeat: 20, // Heat gained from stealing a vehicle
   vehicleDrivingSkillBonus: 0.05, // +5% success per driving skill level
   vehicleConditionDecay: 1, // Condition decay per tick when driving
-
-  // ============================================================================
-  // NPC SETTINGS
-  // ============================================================================
-  npcActionInterval: 5, // Ticks between NPC actions
-  npcMaxPerWorld: 50, // Maximum NPCs in the world
-
-  // NPC personality ranges (0-100)
-  npcPersonalityDefaults: {
-    criminal: { aggression: 70, greed: 80, caution: 30, loyalty: 20, sociability: 40 },
-    worker: { aggression: 20, greed: 50, caution: 60, loyalty: 60, sociability: 50 },
-    trader: { aggression: 30, greed: 90, caution: 70, loyalty: 40, sociability: 70 },
-    social: { aggression: 20, greed: 40, caution: 50, loyalty: 80, sociability: 90 },
-    chaotic: { aggression: 80, greed: 60, caution: 10, loyalty: 10, sociability: 50 },
-  } as Record<NPCBehaviorType, { aggression: number; greed: number; caution: number; loyalty: number; sociability: number }>,
-
-  // Action weights by behavior type (higher = more likely to choose)
-  npcActionWeights: {
-    criminal: {
-      COMMIT_CRIME: 40,
-      ROB_AGENT: 25,
-      ATTACK_AGENT: 20,
-      MOVE: 10,
-      REST: 5,
-    },
-    worker: {
-      TAKE_JOB: 50,
-      REST: 20,
-      MOVE: 20,
-      BUY: 10,
-    },
-    trader: {
-      BUY: 35,
-      SELL: 35,
-      MOVE: 20,
-      TAKE_JOB: 10,
-    },
-    social: {
-      SEND_FRIEND_REQUEST: 25,
-      GIFT_CASH: 20,
-      MOVE: 25,
-      REST: 15,
-      TAKE_JOB: 15,
-    },
-    chaotic: {
-      GAMBLE: 25,
-      ATTACK_AGENT: 20,
-      COMMIT_CRIME: 20,
-      MOVE: 15,
-      STEAL_VEHICLE: 10,
-      PLACE_BOUNTY: 10,
-    },
-  } as Record<NPCBehaviorType, Record<string, number>>,
 } as const;

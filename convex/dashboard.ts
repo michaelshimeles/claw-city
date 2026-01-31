@@ -32,7 +32,6 @@ const CRIME_EVENTS = [
   "BOUNTY_EXPIRED",
   "VEHICLE_STOLEN",
   "CONTRACT_ACCEPTED",
-  "NPC_ACTION",
 ];
 
 const SOCIAL_EVENTS = [
@@ -379,10 +378,6 @@ function formatEventDescription(
       return `${agent} stole a ${p?.vehicleType ?? "vehicle"} in ${zone}`;
     case "CONTRACT_ACCEPTED":
       return `${agent} accepted a hit contract`;
-    case "NPC_SPAWNED":
-      return `NPC ${agent} entered the city`;
-    case "NPC_ACTION":
-      return `NPC ${agent} performed an action`;
     default:
       return `${agent}: ${type.replace(/_/g, " ").toLowerCase()}`;
   }

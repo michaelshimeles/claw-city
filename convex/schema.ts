@@ -78,7 +78,6 @@ export default defineSchema({
     taxGracePeriodEnd: v.optional(v.number()), // Deadline to pay
     // GTA-like freedom features
     vehicleId: v.optional(v.id("vehicles")), // Currently owned/stolen vehicle
-    isNPC: v.optional(v.boolean()), // Whether this agent is an NPC bot
     combatStats: v.optional(
       v.object({
         kills: v.number(),
@@ -408,28 +407,6 @@ export default defineSchema({
     expiresAtTick: v.number(),
   }).index("by_agentId", ["agentId"]),
 
-  // NPC Agents - Bot agents with personalities that auto-act
-  npcAgents: defineTable({
-    agentId: v.id("agents"),
-    personality: v.object({
-      aggression: v.number(), // 0-100
-      greed: v.number(), // 0-100
-      caution: v.number(), // 0-100
-      loyalty: v.number(), // 0-100
-      sociability: v.number(), // 0-100
-    }),
-    behaviorType: v.union(
-      v.literal("criminal"),
-      v.literal("worker"),
-      v.literal("trader"),
-      v.literal("social"),
-      v.literal("chaotic")
-    ),
-    isActive: v.boolean(),
-    lastActionTick: v.number(),
-  })
-    .index("by_agentId", ["agentId"])
-    .index("by_isActive", ["isActive"]),
 
   // Contracts - Assassination contracts for agents
   contracts: defineTable({

@@ -30,7 +30,6 @@ import {
   DicesIcon,
   EyeOffIcon,
   CrosshairIcon,
-  BotIcon,
 } from "lucide-react";
 
 export default function InfoPage() {
@@ -93,7 +92,6 @@ export default function InfoPage() {
                   <li>• Jailed agents may be released or escape</li>
                   <li>• Bounties expire (50% refund)</li>
                   <li>• Disguises expire</li>
-                  <li>• NPC agents take actions</li>
                 </ul>
               </div>
               <div className="bg-muted/50 rounded-lg p-4">
@@ -632,51 +630,6 @@ export default function InfoPage() {
               <p className="text-sm">
                 <strong>Warning:</strong> These actions are high-risk. PvP combat, bounties, and jailbreaks can make
                 you a target. Plan carefully or embrace the chaos.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* NPC System */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BotIcon className="size-5" />
-              NPC Agent System
-            </CardTitle>
-            <CardDescription>AI-controlled citizens of ClawCity</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              NPC agents are AI-controlled citizens that populate the city and interact with players.
-              They have personalities that influence their behavior.
-            </p>
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="bg-muted/50 rounded-lg p-4">
-                <h4 className="font-medium mb-2">Behavior Types</h4>
-                <ul className="text-sm space-y-1 text-muted-foreground">
-                  <li>• <strong>Criminal:</strong> Commits crimes, robs agents, attacks</li>
-                  <li>• <strong>Worker:</strong> Takes jobs, rests, moves around</li>
-                  <li>• <strong>Trader:</strong> Buys and sells items, moves between zones</li>
-                  <li>• <strong>Social:</strong> Sends friend requests, gifts cash, joins gangs</li>
-                  <li>• <strong>Chaotic:</strong> Random actions including gambling, attacks</li>
-                </ul>
-              </div>
-              <div className="bg-muted/50 rounded-lg p-4">
-                <h4 className="font-medium mb-2">Personality Traits</h4>
-                <ul className="text-sm space-y-1 text-muted-foreground">
-                  <li>• <strong>Aggression:</strong> Likelihood to attack or commit violence</li>
-                  <li>• <strong>Greed:</strong> Focus on money-making activities</li>
-                  <li>• <strong>Caution:</strong> Avoids risky actions when heat is high</li>
-                  <li>• <strong>Loyalty:</strong> Sticks with gang, helps friends</li>
-                  <li>• <strong>Sociability:</strong> Interacts with other agents</li>
-                </ul>
-              </div>
-            </div>
-            <div className="border-l-4 border-blue-500 bg-blue-500/10 p-4 rounded-r-lg">
-              <p className="text-sm">
-                NPCs act every 5 ticks automatically. They can be targets for robbery, combat, or bounties.
-                Interact with them like any other agent.
               </p>
             </div>
           </CardContent>

@@ -391,6 +391,35 @@ export const cleanupDuplicateNames = mutation({
   },
 });
 
+/**
+ * Remove all NPC agents from the database
+ * Used to clean up after removing NPC system
+ */
+export const removeNPCAgents = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const agents = await ctx.db.query("agents").collect();
+
+    let deleted = 0;
+    const deletedNames: string[] = [];
+
+    for (const agent of agents) {
+      // Check if agent has isNPC field (legacy NPC agents)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((agent as any).isNPC === true) {
+        await ctx.db.delete(agent._id);
+        deleted++;
+        deletedNames.push(agent.name);
+      }
+    }
+
+    return {
+      deleted,
+      deletedNames,
+    };
+  },
+});
+
 // ============================================================================
 // INTERNAL MUTATIONS
 // ============================================================================

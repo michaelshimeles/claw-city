@@ -53,7 +53,6 @@ type TaxResult = { assessed: number; paid: number; evaded: number };
 type BountyResult = { expired: number; refunded: number };
 type DisguiseResult = { expired: number };
 type JailReleaseResult = { released: number };
-type NPCResult = { processed: number };
 
 type TickRunResult =
   | { skipped: true; reason: string }
@@ -73,7 +72,6 @@ type TickRunResult =
       bountiesExpired: number;
       disguisesExpired: number;
       jailedReleased: number;
-      npcActionsProcessed: number;
     };
 
 // ============================================================================
@@ -131,13 +129,7 @@ async function runTickHandler(ctx: ActionCtx): Promise<TickRunResult> {
   const disguiseResult: DisguiseResult = await ctx.runMutation(internal.tickHelpers.processDisguiseExpiration);
   const jailReleaseResult: JailReleaseResult = await ctx.runMutation(internal.tickHelpers.releaseJailedAgents);
 
-  // 12. Process NPC actions
-  const npcResult: NPCResult = await ctx.runMutation(internal.npc.processNPCActions, {
-    seed: tickResult.seed,
-    tick: tickResult.tick,
-  });
-
-  // 13. Log tick event
+  // 12. Log tick event
   await ctx.runMutation(internal.tickHelpers.logTickEvent, {
     tick: tickResult.tick,
     resolvedAgents: busyResult.resolved,
@@ -168,7 +160,6 @@ async function runTickHandler(ctx: ActionCtx): Promise<TickRunResult> {
     bountiesExpired: bountyResult.expired,
     disguisesExpired: disguiseResult.expired,
     jailedReleased: jailReleaseResult.released,
-    npcActionsProcessed: npcResult.processed,
   };
 }
 
