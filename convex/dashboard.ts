@@ -433,38 +433,48 @@ export const getWorldStats = query({
       }
     }
 
-    // Get crimes today (events in last 24 hours of ticks)
+    // Get crimes today (events in last 24 hours of ticks) - limited to avoid overload
     const ticksIn24Hours = 1440;
     const cutoffTick = Math.max(0, currentTick - ticksIn24Hours);
-    const recentEvents = await ctx.db
+
+    // Use separate targeted queries with limits for each stat type
+    const [crimeEvents, arrestEvents, taxEvents24h] = await Promise.all([
+      ctx.db
+        .query("events")
+        .withIndex("by_type", (q) => q.eq("type", "CRIME_SUCCESS"))
+        .filter((q) => q.gte(q.field("tick"), cutoffTick))
+        .take(1000),
+      ctx.db
+        .query("events")
+        .withIndex("by_type", (q) => q.eq("type", "AGENT_ARRESTED"))
+        .filter((q) => q.gte(q.field("tick"), cutoffTick))
+        .take(1000),
+      ctx.db
+        .query("events")
+        .withIndex("by_type", (q) => q.eq("type", "TAX_PAID"))
+        .filter((q) => q.gte(q.field("tick"), cutoffTick))
+        .take(1000),
+    ]);
+
+    // Also count failed crimes
+    const failedCrimeEvents = await ctx.db
       .query("events")
-      .withIndex("by_tick")
+      .withIndex("by_type", (q) => q.eq("type", "CRIME_FAILED"))
       .filter((q) => q.gte(q.field("tick"), cutoffTick))
-      .collect();
+      .take(1000);
 
-    const crimesToday = recentEvents.filter(
-      (e) => e.type === "CRIME_SUCCESS" || e.type === "CRIME_FAILED"
-    ).length;
-    const arrestsToday = recentEvents.filter(
-      (e) => e.type === "AGENT_ARRESTED"
-    ).length;
+    const crimesToday = crimeEvents.length + failedCrimeEvents.length;
+    const arrestsToday = arrestEvents.length;
 
-    // Calculate tax collection stats
-    const taxEvents = recentEvents.filter((e) => e.type === "TAX_PAID");
-    const taxCollected24h = taxEvents.reduce((sum, e) => {
+    // Calculate tax collection stats for last 24h
+    const taxCollected24h = taxEvents24h.reduce((sum, e) => {
       const payload = e.payload as { amount?: number } | null;
       return sum + (payload?.amount ?? 0);
     }, 0);
 
-    // Get all-time tax collected from all TAX_PAID events
-    const allTaxEvents = await ctx.db
-      .query("events")
-      .filter((q) => q.eq(q.field("type"), "TAX_PAID"))
-      .collect();
-    const totalTaxCollected = allTaxEvents.reduce((sum, e) => {
-      const payload = e.payload as { amount?: number } | null;
-      return sum + (payload?.amount ?? 0);
-    }, 0);
+    // For total tax collected, use the sum of agents' lifetimeEarnings as proxy
+    // or track in world state - avoid scanning all events
+    const totalTaxCollected = taxCollected24h; // Just show 24h for now
 
     // Count agents with pending taxes
     const agentsWithTaxDue = agents.filter(

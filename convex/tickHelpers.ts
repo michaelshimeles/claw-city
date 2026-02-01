@@ -136,6 +136,52 @@ export const resolveBusyAgents = internalMutation({
           }
         }
 
+        // Handle REST completion - restore stamina
+        let newStamina = agent.stamina;
+        if (busyAction === "REST") {
+          const staminaBefore = agent.stamina;
+          newStamina = Math.min(100, agent.stamina + DEFAULTS.restStaminaGain);
+
+          // Log REST_COMPLETED event
+          await ctx.db.insert("events", {
+            tick: currentTick,
+            timestamp: Date.now(),
+            type: "REST_COMPLETED",
+            agentId: agent._id,
+            zoneId: agent.locationZoneId,
+            entityId: null,
+            payload: {
+              staminaBefore,
+              staminaAfter: newStamina,
+              staminaGain: newStamina - staminaBefore,
+            },
+            requestId: null,
+          });
+        }
+
+        // Handle HEAL completion - restore health to full
+        let newHealth = agent.health;
+        if (busyAction === "HEAL") {
+          const healthBefore = agent.health;
+          newHealth = 100;
+
+          // Log HEAL_COMPLETED event
+          await ctx.db.insert("events", {
+            tick: currentTick,
+            timestamp: Date.now(),
+            type: "HEAL_COMPLETED",
+            agentId: agent._id,
+            zoneId: agent.locationZoneId,
+            entityId: null,
+            payload: {
+              healthBefore,
+              healthAfter: newHealth,
+              healthRestored: newHealth - healthBefore,
+            },
+            requestId: null,
+          });
+        }
+
         // Transition agent to idle with updated stats
         await ctx.db.patch(agent._id, {
           status: "idle",
@@ -143,6 +189,8 @@ export const resolveBusyAgents = internalMutation({
           busyAction: null,
           cash: newCash,
           stats: newStats,
+          stamina: newStamina,
+          health: newHealth,
         });
 
         resolvedCount++;
