@@ -264,8 +264,12 @@ export function JournalFeed({ entries, showAgentName = true }: JournalFeedProps)
       setIsGeneratingImage(false);
     }
   };
-  // Group entries by date
-  const groupedEntries = entries.reduce((groups, entry) => {
+  // Filter out failed entries and group by date
+  const successfulEntries = entries.filter(
+    (entry) => !entry.result || entry.result.success !== false
+  );
+
+  const groupedEntries = successfulEntries.reduce((groups, entry) => {
     const date = format(new Date(entry.timestamp), "MMMM d, yyyy");
     if (!groups[date]) {
       groups[date] = [];
