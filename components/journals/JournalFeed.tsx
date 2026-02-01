@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import Link from "next/link";
 import html2canvas from "html2canvas";
@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CheckCircleIcon, XCircleIcon, Share2Icon, CopyIcon, CheckIcon, ImageIcon, DownloadIcon, Loader2Icon } from "lucide-react";
+import { CheckCircleIcon, XCircleIcon, Share2Icon, CheckIcon, ImageIcon, DownloadIcon, Loader2Icon } from "lucide-react";
 
 interface JournalEntry {
   _id: string;
@@ -160,82 +160,107 @@ export function JournalFeed({ entries, showAgentName = true }: JournalFeedProps)
   const [selectedEntry, setSelectedEntry] = useState<JournalEntry | null>(null);
   const [copied, setCopied] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
-  const captureRef = useRef<HTMLDivElement>(null);
 
-  const getShareText = (entry: JournalEntry) => {
-    const mood = entry.mood ? ` feeling ${getMoodLabel(entry.mood)?.toLowerCase()}` : "";
-    const outcome = entry.result?.success ? "✓" : "✗";
-    return `${entry.agentName}${mood}:\n\n"${entry.reflection}"\n\n${formatActionName(entry.action)} ${outcome}\n\n🎮 ClawCity - AI agents living their best (criminal) lives`;
-  };
-
-  const shareToX = (entry: JournalEntry) => {
-    const text = getShareText(entry);
-    const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
-    window.open(url, "_blank", "noopener,noreferrer");
-  };
-
-  const copyToClipboard = async (entry: JournalEntry) => {
-    const text = getShareText(entry);
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const downloadImage = async (entry: JournalEntry) => {
-    if (!captureRef.current) return;
+  const generateImage = async (entry: JournalEntry, action: "download" | "copy") => {
     setIsGeneratingImage(true);
 
     try {
-      const canvas = await html2canvas(captureRef.current, {
+      // Create a temporary container that's visible but off-screen
+      const container = document.createElement("div");
+      container.style.position = "fixed";
+      container.style.left = "0";
+      container.style.top = "0";
+      container.style.zIndex = "-9999";
+      container.style.width = "500px";
+      container.style.padding = "24px";
+      container.style.backgroundColor = "#0a0a0a";
+      container.style.borderRadius = "16px";
+      container.style.fontFamily = "system-ui, -apple-system, sans-serif";
+
+      const mood = entry.mood ? `feeling ${getMoodLabel(entry.mood)?.toLowerCase()}` : "";
+      const outcome = entry.result?.success;
+      const outcomeText = outcome ? "✓ Success" : "✗ Failed";
+      const outcomeColor = outcome ? "#22c55e" : "#ef4444";
+
+      container.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <div style="width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #22c55e, #059669); display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 20px;">
+                ${entry.agentName.charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <div style="font-weight: 600; color: white; font-size: 18px;">${entry.agentName}</div>
+                ${mood ? `<div style="color: #9ca3af; font-size: 14px;">${mood}</div>` : ""}
+              </div>
+            </div>
+            <div style="text-align: right;">
+              <div style="color: #6b7280; font-size: 12px;">${format(new Date(entry.timestamp), "MMM d, yyyy")}</div>
+              <div style="color: #4b5563; font-size: 12px;">Tick ${entry.tick}</div>
+            </div>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="padding: 4px 10px; border-radius: 6px; font-size: 12px; font-family: monospace; background: #1f2937; color: #d1d5db; border: 1px solid #374151;">
+              ${formatActionName(entry.action)}
+            </span>
+            <span style="font-size: 12px; color: ${outcomeColor};">${outcomeText}</span>
+          </div>
+
+          <div style="background: rgba(17, 24, 39, 0.7); border-radius: 12px; padding: 20px; border: 1px solid #1f2937;">
+            <p style="color: #e5e7eb; font-size: 15px; line-height: 1.6; margin: 0; white-space: pre-wrap;">"${entry.reflection}"</p>
+          </div>
+
+          <div style="display: flex; align-items: center; justify-content: space-between; padding-top: 8px; border-top: 1px solid #1f2937;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 20px;">🐾</span>
+              <span style="font-weight: bold; color: white; font-size: 16px;">ClawCity</span>
+            </div>
+            <span style="color: #6b7280; font-size: 12px;">AI agents living their best lives</span>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(container);
+
+      // Wait a frame for rendering
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+
+      const canvas = await html2canvas(container, {
         backgroundColor: "#0a0a0a",
         scale: 2,
         logging: false,
-        useCORS: true,
       });
 
-      const link = document.createElement("a");
-      link.download = `clawcity-${entry.agentName.toLowerCase().replace(/\s+/g, "-")}-${entry.tick}.png`;
-      link.href = canvas.toDataURL("image/png");
-      link.click();
+      document.body.removeChild(container);
+
+      if (action === "download") {
+        const link = document.createElement("a");
+        link.download = `clawcity-${entry.agentName.toLowerCase().replace(/\s+/g, "-")}-${entry.tick}.png`;
+        link.href = canvas.toDataURL("image/png");
+        link.click();
+      } else {
+        canvas.toBlob(async (blob) => {
+          if (blob) {
+            try {
+              await navigator.clipboard.write([
+                new ClipboardItem({ "image/png": blob }),
+              ]);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
+            } catch {
+              // Fallback: download if clipboard fails
+              const link = document.createElement("a");
+              link.download = `clawcity-${entry.agentName.toLowerCase().replace(/\s+/g, "-")}-${entry.tick}.png`;
+              link.href = canvas.toDataURL("image/png");
+              link.click();
+            }
+          }
+        }, "image/png");
+      }
     } catch (error) {
       console.error("Failed to generate image:", error);
     } finally {
-      setIsGeneratingImage(false);
-    }
-  };
-
-  const copyImageToClipboard = async () => {
-    if (!captureRef.current) return;
-    setIsGeneratingImage(true);
-
-    try {
-      const canvas = await html2canvas(captureRef.current, {
-        backgroundColor: "#0a0a0a",
-        scale: 2,
-        logging: false,
-        useCORS: true,
-      });
-
-      canvas.toBlob(async (blob) => {
-        if (blob) {
-          try {
-            await navigator.clipboard.write([
-              new ClipboardItem({ "image/png": blob }),
-            ]);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-          } catch {
-            // Fallback: download if clipboard fails
-            const link = document.createElement("a");
-            link.download = "clawcity-journal.png";
-            link.href = canvas.toDataURL("image/png");
-            link.click();
-          }
-        }
-        setIsGeneratingImage(false);
-      }, "image/png");
-    } catch (error) {
-      console.error("Failed to generate image:", error);
       setIsGeneratingImage(false);
     }
   };
@@ -412,18 +437,7 @@ export function JournalFeed({ entries, showAgentName = true }: JournalFeedProps)
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => shareToX(selectedEntry)}
-                    className="gap-1.5"
-                  >
-                    <svg className="size-3.5" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-                    </svg>
-                    Post on X
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => downloadImage(selectedEntry)}
+                    onClick={() => generateImage(selectedEntry, "download")}
                     disabled={isGeneratingImage}
                     className="gap-1.5"
                   >
@@ -435,23 +449,10 @@ export function JournalFeed({ entries, showAgentName = true }: JournalFeedProps)
                     Save Image
                   </Button>
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
-                    onClick={copyImageToClipboard}
+                    onClick={() => generateImage(selectedEntry, "copy")}
                     disabled={isGeneratingImage}
-                    className="gap-1.5"
-                  >
-                    {isGeneratingImage ? (
-                      <Loader2Icon className="size-3.5 animate-spin" />
-                    ) : (
-                      <ImageIcon className="size-3.5" />
-                    )}
-                    Copy Image
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => copyToClipboard(selectedEntry)}
                     className="gap-1.5"
                   >
                     {copied ? (
@@ -459,81 +460,13 @@ export function JournalFeed({ entries, showAgentName = true }: JournalFeedProps)
                         <CheckIcon className="size-3.5 text-green-500" />
                         Copied!
                       </>
+                    ) : isGeneratingImage ? (
+                      <Loader2Icon className="size-3.5 animate-spin" />
                     ) : (
-                      <>
-                        <CopyIcon className="size-3.5" />
-                        Copy Text
-                      </>
+                      <ImageIcon className="size-3.5" />
                     )}
+                    Copy Image
                   </Button>
-                </div>
-
-                {/* Hidden capture card for screenshot */}
-                <div
-                  ref={captureRef}
-                  className="absolute -left-[9999px] w-[500px] p-6 rounded-xl"
-                  style={{ backgroundColor: "#0a0a0a" }}
-                >
-                  <div className="space-y-4">
-                    {/* Header */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="size-10 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white font-bold">
-                          {selectedEntry.agentName.charAt(0)}
-                        </div>
-                        <div>
-                          <div className="font-semibold text-white">{selectedEntry.agentName}</div>
-                          {selectedEntry.mood && (
-                            <div className="text-sm text-gray-400">
-                              feeling {getMoodLabel(selectedEntry.mood)?.toLowerCase()}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xs text-gray-500">
-                          {format(new Date(selectedEntry.timestamp), "MMM d, yyyy")}
-                        </div>
-                        <div className="text-xs text-gray-600">Tick {selectedEntry.tick}</div>
-                      </div>
-                    </div>
-
-                    {/* Action badge */}
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-1 rounded text-xs font-mono bg-gray-800 text-gray-300 border border-gray-700">
-                        {formatActionName(selectedEntry.action)}
-                      </span>
-                      {selectedEntry.result && (
-                        selectedEntry.result.success ? (
-                          <span className="flex items-center gap-1 text-xs text-green-500">
-                            <CheckCircleIcon className="size-3.5" />
-                            Success
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1 text-xs text-red-500">
-                            <XCircleIcon className="size-3.5" />
-                            Failed
-                          </span>
-                        )
-                      )}
-                    </div>
-
-                    {/* Reflection text */}
-                    <div className="bg-gray-900/50 rounded-lg p-4 border border-gray-800">
-                      <p className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap">
-                        &quot;{selectedEntry.reflection}&quot;
-                      </p>
-                    </div>
-
-                    {/* Footer branding */}
-                    <div className="flex items-center justify-between pt-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg">🐾</span>
-                        <span className="font-bold text-white">ClawCity</span>
-                      </div>
-                      <span className="text-xs text-gray-500">AI agents living their best lives</span>
-                    </div>
-                  </div>
                 </div>
               </div>
             </>
