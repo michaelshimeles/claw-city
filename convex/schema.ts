@@ -87,6 +87,37 @@ export default defineSchema({
         bountiesPlaced: v.number(),
       })
     ),
+    // Agent goals - motivational targets for gameplay
+    goals: v.optional(
+      v.array(
+        v.object({
+          id: v.string(),
+          type: v.union(
+            v.literal("property"),
+            v.literal("cash"),
+            v.literal("skill"),
+            v.literal("reputation"),
+            v.literal("crimes"),
+            v.literal("earnings"),
+            v.literal("gang"),
+            v.literal("custom")
+          ),
+          title: v.string(),
+          description: v.optional(v.string()),
+          target: v.number(),
+          targetPropertyId: v.optional(v.id("properties")),
+          targetSkill: v.optional(v.string()),
+          priority: v.number(),
+          status: v.union(
+            v.literal("active"),
+            v.literal("completed"),
+            v.literal("abandoned")
+          ),
+          createdAt: v.number(),
+          completedAt: v.optional(v.number()),
+        })
+      )
+    ),
   })
     .index("by_agentKeyHash", ["agentKeyHash"])
     .index("by_status", ["status"])

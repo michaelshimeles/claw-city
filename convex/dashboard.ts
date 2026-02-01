@@ -515,25 +515,35 @@ export const getWorldStats = query({
 
 // Event types considered "dramatic" for the ticker/toaster
 const DRAMA_EVENT_TYPES = [
+  // Crime events
   "CRIME_SUCCESS",
   "CRIME_FAILED",
-  "AGENT_ARRESTED",
-  "AGENT_RELEASED",
-  "AGENT_KILLED",
-  "AGENT_ATTACKED",
-  "JAILBREAK_SUCCESS",
-  "JAILBREAK_FAILED",
-  "BOUNTY_PLACED",
-  "BOUNTY_CLAIMED",
   "COOP_CRIME_SUCCESS",
   "COOP_CRIME_FAILED",
+  // Law enforcement
+  "AGENT_ARRESTED",
+  "AGENT_RELEASED",
+  "JAILBREAK_SUCCESS",
+  "JAILBREAK_FAILED",
+  "TAX_EVADED",
+  // Violence
+  "AGENT_KILLED",
+  "AGENT_ATTACKED",
+  "BOUNTY_PLACED",
+  "BOUNTY_CLAIMED",
+  // Social
   "GANG_BETRAYED",
+  "GANG_CREATED",
+  "GANG_JOINED",
+  // Economy
   "VEHICLE_STOLEN",
   "GAMBLE_WON",
+  "GAMBLE_LOST",
+  "JOB_STARTED",
+  "JOB_COMPLETED",
+  "PROPERTY_PURCHASED",
+  "BUSINESS_STARTED",
 ] as const;
-
-// Minimum wage to consider a job completion "dramatic"
-const HIGH_WAGE_THRESHOLD = 200;
 
 /**
  * Get recent dramatic events for the global ticker and notifications
@@ -547,28 +557,15 @@ export const getDramaEvents = query({
   handler: async (ctx, args) => {
     const limit = Math.min(args.limit ?? 20, 50);
 
-    // Fetch recent events
+    // Fetch more events to get variety
     const allEvents = await ctx.db
       .query("events")
       .order("desc")
-      .take(200);
+      .take(500);
 
     // Filter to dramatic events only
     const dramaEvents = allEvents.filter((event) => {
-      // Check if it's a known drama event type
-      if (DRAMA_EVENT_TYPES.includes(event.type as typeof DRAMA_EVENT_TYPES[number])) {
-        return true;
-      }
-
-      // Check for high-wage job completions
-      if (event.type === "JOB_COMPLETED") {
-        const payload = event.payload as { wage?: number } | null;
-        if (payload?.wage && payload.wage >= HIGH_WAGE_THRESHOLD) {
-          return true;
-        }
-      }
-
-      return false;
+      return DRAMA_EVENT_TYPES.includes(event.type as typeof DRAMA_EVENT_TYPES[number]);
     });
 
     // If afterId is provided, filter to events after that ID
@@ -580,8 +577,34 @@ export const getDramaEvents = query({
       }
     }
 
-    // Take the limit
-    const events = filteredEvents.slice(0, limit);
+    // Spread events to avoid showing same agent repeatedly
+    // Take events ensuring variety by limiting consecutive events from same agent
+    const spreadEvents: typeof filteredEvents = [];
+    const recentAgents: string[] = [];
+
+    for (const event of filteredEvents) {
+      if (spreadEvents.length >= limit) break;
+
+      const agentId = event.agentId?.toString() ?? "none";
+
+      // Allow event if agent hasn't appeared in last 3 events
+      if (!recentAgents.slice(-3).includes(agentId)) {
+        spreadEvents.push(event);
+        recentAgents.push(agentId);
+      }
+    }
+
+    // If we don't have enough spread events, fill with remaining events
+    if (spreadEvents.length < limit) {
+      for (const event of filteredEvents) {
+        if (spreadEvents.length >= limit) break;
+        if (!spreadEvents.some(e => e._id === event._id)) {
+          spreadEvents.push(event);
+        }
+      }
+    }
+
+    const events = spreadEvents;
 
     // Get all agents and zones for name lookup
     const agents = await ctx.db.query("agents").collect();
@@ -687,9 +710,133 @@ function formatDramaDescription(
       return `${agentName} stole a ${p?.vehicleType ?? "vehicle"} in ${zoneName}`;
     case "GAMBLE_WON":
       return `${agentName} won $${p?.winnings ?? "big"} gambling!`;
+    case "GAMBLE_LOST":
+      return `${agentName} lost $${p?.amount ?? "?"} gambling`;
+    case "JOB_STARTED":
+      return `${agentName} started working in ${zoneName}`;
     case "JOB_COMPLETED":
       return `${agentName} earned $${p?.wage ?? "?"} from a job`;
+    case "TAX_EVADED":
+      return `${agentName} was jailed for tax evasion!`;
+    case "GANG_CREATED":
+      return `${agentName} founded a new gang!`;
+    case "GANG_JOINED":
+      return `${agentName} joined a gang`;
+    case "PROPERTY_PURCHASED":
+      return `${agentName} bought property in ${zoneName}`;
+    case "BUSINESS_STARTED":
+      return `${agentName} opened a business in ${zoneName}`;
     default:
       return `${agentName}: ${type.replace(/_/g, " ").toLowerCase()}`;
   }
 }
+
+/**
+ * Get events for followed agents (Spectate Mode)
+ * Returns events where the agent is the actor OR the target
+ */
+export const getFollowedAgentEvents = query({
+  args: {
+    agentIds: v.array(v.id("agents")),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = Math.min(args.limit ?? 20, 50);
+
+    // If no agents to follow, return empty array
+    if (args.agentIds.length === 0) {
+      return [];
+    }
+
+    // Create a Set for fast lookup
+    const followedAgentSet = new Set(args.agentIds.map((id) => id.toString()));
+
+    // Fetch recent events
+    const allEvents = await ctx.db
+      .query("events")
+      .order("desc")
+      .take(500);
+
+    // Filter to events involving followed agents
+    const followedEvents = allEvents.filter((event) => {
+      // Check if the main agent is followed
+      if (event.agentId && followedAgentSet.has(event.agentId.toString())) {
+        return true;
+      }
+
+      // Check if the target agent in payload is followed
+      const payload = event.payload as Record<string, unknown> | null;
+      if (payload?.targetAgentId) {
+        const targetId = payload.targetAgentId as string;
+        if (followedAgentSet.has(targetId)) {
+          return true;
+        }
+      }
+
+      return false;
+    });
+
+    // Take the limit
+    const events = followedEvents.slice(0, limit);
+
+    // Get all agents and zones for name lookup
+    const agents = await ctx.db.query("agents").collect();
+    const agentsById: Record<string, string> = {};
+    for (const agent of agents) {
+      agentsById[agent._id.toString()] = agent.name;
+    }
+
+    const zones = await ctx.db.query("zones").collect();
+    const zonesById: Record<string, string> = {};
+    for (const zone of zones) {
+      zonesById[zone._id.toString()] = zone.name;
+    }
+
+    // Format events with human-readable descriptions
+    return events.map((event) => {
+      const agentName = event.agentId
+        ? agentsById[event.agentId.toString()] ?? "Unknown"
+        : "Someone";
+      const zoneName = event.zoneId
+        ? zonesById[event.zoneId.toString()] ?? "somewhere"
+        : "somewhere";
+
+      const description = formatDramaDescription(
+        event.type,
+        agentName,
+        zoneName,
+        event.payload
+      );
+
+      // Determine drama level for styling
+      let dramaLevel: "normal" | "exciting" | "critical" = "normal";
+      if (
+        event.type === "AGENT_KILLED" ||
+        event.type === "JAILBREAK_SUCCESS" ||
+        event.type === "GANG_BETRAYED" ||
+        event.type === "BOUNTY_CLAIMED"
+      ) {
+        dramaLevel = "critical";
+      } else if (
+        event.type === "CRIME_SUCCESS" ||
+        event.type === "COOP_CRIME_SUCCESS" ||
+        event.type === "GAMBLE_WON"
+      ) {
+        dramaLevel = "exciting";
+      }
+
+      return {
+        _id: event._id,
+        type: event.type,
+        timestamp: event.timestamp,
+        tick: event.tick,
+        agentId: event.agentId,
+        agentName,
+        zoneName,
+        description,
+        dramaLevel,
+        payload: event.payload,
+      };
+    });
+  },
+});

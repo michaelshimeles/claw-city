@@ -5,6 +5,8 @@ import { ConvexClientProvider } from "@/lib/convex";
 import { Navigation } from "@/components/layout/Navigation";
 import { GlobalTicker } from "@/components/activity/GlobalTicker";
 import { DramaToaster } from "@/components/notifications/DramaToaster";
+import { SpectateToaster } from "@/components/notifications/SpectateToaster";
+import { SpectateProvider } from "@/lib/contexts/SpectateContext";
 import { Analytics } from "@vercel/analytics/next";
 
 const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-sans' });
@@ -78,11 +80,14 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <ConvexClientProvider>
-          <Navigation />
-          <GlobalTicker />
-          <main>{children}</main>
-          <DramaToaster />
-          <Analytics />
+          <SpectateProvider>
+            <Navigation />
+            <GlobalTicker />
+            <main>{children}</main>
+            <DramaToaster />
+            <SpectateToaster />
+            <Analytics />
+          </SpectateProvider>
         </ConvexClientProvider>
       </body>
     </html>

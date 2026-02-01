@@ -881,6 +881,7 @@ export const cleanupDuplicates = mutation({
 // ============================================================================
 
 import { computeAgentTitle, TitleContext } from "./lib/nicknames";
+import { computeGoalProgress, Goal, GoalContext } from "./lib/goals";
 
 /**
  * Get comprehensive agent profile with all details
@@ -1026,6 +1027,28 @@ export const getAgentProfile = query({
       })
     );
 
+    // Compute goals with progress
+    const goalContext: GoalContext = {
+      agent,
+      ownedPropertyCount: agent.homePropertyId ? 1 : 0,
+      isInGang: !!agent.gangId,
+      isGangLeader,
+    };
+
+    const goalsWithProgress = (agent.goals ?? [])
+      .filter((g): g is Goal => g.status === "active")
+      .map((goal) => {
+        const progress = computeGoalProgress(goal, goalContext);
+        return {
+          ...goal,
+          current: progress.current,
+          target: progress.target,
+          percentage: progress.percentage,
+          isComplete: progress.isComplete,
+        };
+      })
+      .sort((a, b) => b.priority - a.priority);
+
     return {
       // Basic info
       _id: agent._id,
@@ -1097,6 +1120,9 @@ export const getAgentProfile = query({
 
       // Businesses
       businesses,
+
+      // Goals
+      goals: goalsWithProgress,
 
       // Recent activity
       recentEvents: recentEvents.map((e) => ({

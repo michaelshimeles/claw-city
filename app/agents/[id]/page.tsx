@@ -30,6 +30,8 @@ import {
   BookOpenIcon,
 } from "lucide-react";
 import { JournalFeed } from "@/components/journals/JournalFeed";
+import { AgentGoals } from "@/components/agents/AgentGoals";
+import { FollowButton } from "@/components/spectate/FollowButton";
 
 function getStatusBadgeVariant(
   status: string
@@ -133,6 +135,7 @@ export default function AgentDetailPage() {
               <Badge variant="outline">{profile.gang.role}</Badge>
             </div>
           )}
+          <FollowButton agentId={agentId} agentName={profile.name} size="sm" />
           <Link href={`/messages?selected=${agentId}`}>
             <Button variant="outline" size="sm">
               <MessageSquareIcon className="size-4 mr-2" />
@@ -366,6 +369,9 @@ export default function AgentDetailPage() {
                 </CardContent>
               </Card>
             </div>
+
+            {/* Agent Goals */}
+            <AgentGoals goals={profile.goals ?? []} />
 
             {/* Inventory & Property/Gang */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
