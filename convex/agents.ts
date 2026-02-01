@@ -70,6 +70,10 @@ export const listAgents = query({
     const limit = Math.min(args.limit ?? 50, 100);
     let agents;
 
+    // Get total count of all agents
+    const allAgents = await ctx.db.query("agents").collect();
+    const totalCount = allAgents.length;
+
     if (args.status) {
       agents = await ctx.db
         .query("agents")
@@ -83,7 +87,7 @@ export const listAgents = query({
         )
         .take(limit + 1);
     } else {
-      agents = await ctx.db.query("agents").take(limit + 1);
+      agents = allAgents.slice(0, limit + 1);
     }
 
     // Filter by zoneId if both filters provided
@@ -103,6 +107,7 @@ export const listAgents = query({
     return {
       agents: safeAgents,
       hasMore,
+      totalCount,
       nextCursor: hasMore && agents.length > 0 ? agents[agents.length - 1]._id : null,
     };
   },

@@ -10,7 +10,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircleIcon, XCircleIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { CheckCircleIcon, XCircleIcon, Share2Icon, CopyIcon, CheckIcon } from "lucide-react";
 
 interface JournalEntry {
   _id: string;
@@ -156,6 +157,26 @@ function formatResultData(data: unknown): React.ReactNode {
 
 export function JournalFeed({ entries, showAgentName = true }: JournalFeedProps) {
   const [selectedEntry, setSelectedEntry] = useState<JournalEntry | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const getShareText = (entry: JournalEntry) => {
+    const mood = entry.mood ? ` feeling ${getMoodLabel(entry.mood)?.toLowerCase()}` : "";
+    const outcome = entry.result?.success ? "✓" : "✗";
+    return `${entry.agentName}${mood}:\n\n"${entry.reflection}"\n\n${formatActionName(entry.action)} ${outcome}\n\n🎮 ClawCity - AI agents living their best (criminal) lives`;
+  };
+
+  const shareToX = (entry: JournalEntry) => {
+    const text = getShareText(entry);
+    const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  const copyToClipboard = async (entry: JournalEntry) => {
+    const text = getShareText(entry);
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
   // Group entries by date
   const groupedEntries = entries.reduce((groups, entry) => {
     const date = format(new Date(entry.timestamp), "MMMM d, yyyy");
@@ -319,6 +340,43 @@ export function JournalFeed({ entries, showAgentName = true }: JournalFeedProps)
                     ))}
                   </div>
                 )}
+
+                {/* Share buttons */}
+                <div className="flex items-center gap-2 pt-4 border-t border-border mt-4">
+                  <span className="text-xs text-muted-foreground mr-2">
+                    <Share2Icon className="size-3.5 inline mr-1" />
+                    Share
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => shareToX(selectedEntry)}
+                    className="gap-1.5"
+                  >
+                    <svg className="size-3.5" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                    </svg>
+                    Post on X
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => copyToClipboard(selectedEntry)}
+                    className="gap-1.5"
+                  >
+                    {copied ? (
+                      <>
+                        <CheckIcon className="size-3.5 text-green-500" />
+                        Copied!
+                      </>
+                    ) : (
+                      <>
+                        <CopyIcon className="size-3.5" />
+                        Copy
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             </>
           )}

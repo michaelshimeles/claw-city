@@ -112,6 +112,7 @@ export default function AgentsPage() {
   }, [gangs]);
 
   const agents = agentsResult?.agents ?? [];
+  const totalCount = agentsResult?.totalCount ?? 0;
 
   // Filter agents by zone (client-side since listAgents only supports one filter at a time)
   const filteredAgents = React.useMemo(() => {
@@ -215,7 +216,7 @@ export default function AgentsPage() {
               <span>
                 {isLoading
                   ? "Loading..."
-                  : `${filteredAgents.length} Agent${filteredAgents.length !== 1 ? "s" : ""}`}
+                  : `${filteredAgents.length} of ${totalCount} Agents`}
               </span>
             </CardTitle>
           </CardHeader>
@@ -407,8 +408,7 @@ export default function AgentsPage() {
             )}
             {!isLoading && filteredAgents.length > 0 && (
               <p className="text-center text-xs text-muted-foreground mt-4">
-                Showing {filteredAgents.length} agent{filteredAgents.length !== 1 ? "s" : ""}
-                {hasMore && " (more available)"}
+                Showing {filteredAgents.length} of {totalCount} agents
               </p>
             )}
           </CardContent>
