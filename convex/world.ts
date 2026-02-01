@@ -6,6 +6,7 @@
 import { query, mutation, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { DEFAULTS } from "./lib/constants";
+import { generateAgentKey, hashAgentKey } from "./lib/auth";
 
 // ============================================================================
 // QUERIES
@@ -158,6 +159,48 @@ export const resumeWorld = mutation({
       success: true,
       message: "World resumed",
       status: "running" as const,
+    };
+  },
+});
+
+/**
+ * Set up the admin key for protected operations
+ * This generates a new admin key and stores its hash in world.config
+ * The plain key is returned ONLY ONCE - save it immediately!
+ *
+ * If an admin key already exists, this will fail unless force=true
+ */
+export const setupAdminKey = mutation({
+  args: {
+    force: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const world = await ctx.db.query("world").first();
+    if (!world) {
+      throw new Error("World not initialized. Call initializeWorld first.");
+    }
+
+    // Check if admin key already exists
+    if (world.config.adminKeyHash && !args.force) {
+      throw new Error("Admin key already configured. Use force=true to regenerate.");
+    }
+
+    // Generate a new admin key
+    const adminKey = generateAgentKey();
+    const adminKeyHash = await hashAgentKey(adminKey);
+
+    // Update the world config with the new hash
+    await ctx.db.patch(world._id, {
+      config: {
+        ...world.config,
+        adminKeyHash,
+      },
+    });
+
+    return {
+      success: true,
+      message: "Admin key configured. SAVE THIS KEY - it will only be shown once!",
+      adminKey,
     };
   },
 });

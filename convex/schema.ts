@@ -18,6 +18,7 @@ export default defineSchema({
       heatDecayBusy: v.number(),
       arrestThreshold: v.number(),
       maxHeat: v.number(),
+      adminKeyHash: v.optional(v.string()), // SHA-256 hash of admin key
     }),
   }),
 

@@ -330,8 +330,12 @@ export const rotateAgentKey = mutation({
     adminKey: v.string(),
   },
   handler: async (ctx, args) => {
+    // Get world config for admin key hash
+    const world = await ctx.db.query("world").first();
+    const adminKeyHash = world?.config?.adminKeyHash;
+
     // Validate admin key
-    const isAdmin = await validateAdminKey(args.adminKey);
+    const isAdmin = await validateAdminKey(args.adminKey, adminKeyHash);
     if (!isAdmin) {
       throw new Error("Unauthorized: Invalid admin key");
     }
@@ -368,8 +372,12 @@ export const cleanupDuplicateNames = mutation({
     adminKey: v.string(),
   },
   handler: async (ctx, args) => {
+    // Get world config for admin key hash
+    const world = await ctx.db.query("world").first();
+    const adminKeyHash = world?.config?.adminKeyHash;
+
     // Validate admin key
-    const isAdmin = await validateAdminKey(args.adminKey);
+    const isAdmin = await validateAdminKey(args.adminKey, adminKeyHash);
     if (!isAdmin) {
       throw new Error("Unauthorized: Invalid admin key");
     }
@@ -420,8 +428,12 @@ export const removeNPCAgents = mutation({
     adminKey: v.string(),
   },
   handler: async (ctx, args) => {
+    // Get world config for admin key hash
+    const world = await ctx.db.query("world").first();
+    const adminKeyHash = world?.config?.adminKeyHash;
+
     // Validate admin key
-    const isAdmin = await validateAdminKey(args.adminKey);
+    const isAdmin = await validateAdminKey(args.adminKey, adminKeyHash);
     if (!isAdmin) {
       throw new Error("Unauthorized: Invalid admin key");
     }
@@ -651,8 +663,12 @@ export const cleanupDuplicates = mutation({
     adminKey: v.string(),
   },
   handler: async (ctx, args) => {
+    // Get world config for admin key hash
+    const world = await ctx.db.query("world").first();
+    const adminKeyHash = world?.config?.adminKeyHash;
+
     // Validate admin key
-    const isAdmin = await validateAdminKey(args.adminKey);
+    const isAdmin = await validateAdminKey(args.adminKey, adminKeyHash);
     if (!isAdmin) {
       throw new Error("Unauthorized: Invalid admin key");
     }

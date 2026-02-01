@@ -77,15 +77,15 @@ export async function verifyAgentKey(key: string, hash: string): Promise<boolean
 
 /**
  * Validates an admin key against the stored admin key hash.
- * The admin key should be set as an environment variable ADMIN_KEY_HASH.
+ * The admin key hash is stored in world.config.adminKeyHash.
  * @param adminKey - The plain text admin key to verify
+ * @param storedHash - The stored hash from the database
  * @returns A promise that resolves to true if the key is valid
  */
-export async function validateAdminKey(adminKey: string): Promise<boolean> {
-  const storedHash = process.env.ADMIN_KEY_HASH;
+export async function validateAdminKey(adminKey: string, storedHash: string | undefined): Promise<boolean> {
   if (!storedHash) {
     // No admin key configured - reject all admin requests
-    console.error("ADMIN_KEY_HASH environment variable not set");
+    console.error("Admin key hash not configured in world.config.adminKeyHash");
     return false;
   }
 
