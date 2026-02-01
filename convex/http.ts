@@ -6,6 +6,7 @@
  * Endpoints:
  * - GET /agent/state - Returns current agent state
  * - GET /agent/events - Returns agent's events
+ * - GET /agent/messages - Returns agent's conversations (or specific thread with ?with=agentId)
  * - POST /agent/act - Main action endpoint
  * - GET /agent/guide - Returns the agent prompt contract (no auth required)
  */
@@ -18,7 +19,7 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
-import { Doc } from "./_generated/dataModel";
+import { Doc, Id } from "./_generated/dataModel";
 import { hashAgentKey } from "./lib/auth";
 import {
   ERROR_CODES,
@@ -322,6 +323,175 @@ export const getAgentEventsByKeyHash = internalQuery({
     return {
       agentId: agent._id,
       events,
+    };
+  },
+});
+
+/**
+ * Get agent messages/conversations by key hash (for HTTP authentication)
+ */
+export const getAgentMessagesByKeyHash = internalQuery({
+  args: {
+    keyHash: v.string(),
+    otherAgentId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    // Get agent by key hash
+    const agent = await ctx.db
+      .query("agents")
+      .withIndex("by_agentKeyHash", (q) => q.eq("agentKeyHash", args.keyHash))
+      .first();
+
+    if (!agent) {
+      return { error: "UNAUTHORIZED" as const };
+    }
+
+    // If otherAgentId provided, get specific conversation
+    if (args.otherAgentId) {
+      const otherAgentIdTyped = args.otherAgentId as Id<"agents">;
+
+      // Get messages sent by agent to other
+      const sentMessages = await ctx.db
+        .query("messages")
+        .withIndex("by_senderId", (q) => q.eq("senderId", agent._id))
+        .filter((q) => q.eq(q.field("recipientId"), otherAgentIdTyped))
+        .collect();
+
+      // Get messages received by agent from other
+      const receivedMessages = await ctx.db
+        .query("messages")
+        .withIndex("by_recipientId", (q) => q.eq("recipientId", agent._id))
+        .filter((q) => q.eq(q.field("senderId"), otherAgentIdTyped))
+        .collect();
+
+      // Combine and sort by timestamp
+      const allMessages = [...sentMessages, ...receivedMessages].sort(
+        (a, b) => a.timestamp - b.timestamp
+      );
+
+      // Get other agent info
+      const otherAgent = await ctx.db
+        .query("agents")
+        .filter((q) => q.eq(q.field("_id"), otherAgentIdTyped))
+        .first();
+
+      return {
+        type: "conversation" as const,
+        otherAgent: otherAgent
+          ? { agentId: otherAgent._id, name: otherAgent.name, status: otherAgent.status }
+          : null,
+        messages: allMessages.map((m) => ({
+          messageId: m._id,
+          senderId: m.senderId,
+          recipientId: m.recipientId,
+          content: m.content,
+          read: m.read,
+          tick: m.tick,
+          timestamp: m.timestamp,
+          isSent: m.senderId.toString() === agent._id.toString(),
+        })),
+      };
+    }
+
+    // Otherwise, get all conversations
+    const sentMessages = await ctx.db
+      .query("messages")
+      .withIndex("by_senderId", (q) => q.eq("senderId", agent._id))
+      .collect();
+
+    const receivedMessages = await ctx.db
+      .query("messages")
+      .withIndex("by_recipientId", (q) => q.eq("recipientId", agent._id))
+      .collect();
+
+    // Build conversation map
+    const conversationMap: Record<
+      string,
+      {
+        otherAgentId: string;
+        lastMessage: {
+          content: string;
+          timestamp: number;
+          isSent: boolean;
+        };
+        unreadCount: number;
+      }
+    > = {};
+
+    // Process sent messages
+    for (const msg of sentMessages) {
+      const otherIdStr = msg.recipientId.toString();
+      if (
+        !conversationMap[otherIdStr] ||
+        msg.timestamp > conversationMap[otherIdStr].lastMessage.timestamp
+      ) {
+        conversationMap[otherIdStr] = {
+          otherAgentId: otherIdStr,
+          lastMessage: {
+            content: msg.content,
+            timestamp: msg.timestamp,
+            isSent: true,
+          },
+          unreadCount: conversationMap[otherIdStr]?.unreadCount ?? 0,
+        };
+      }
+    }
+
+    // Process received messages
+    for (const msg of receivedMessages) {
+      const otherIdStr = msg.senderId.toString();
+      const existing = conversationMap[otherIdStr];
+
+      if (!existing || msg.timestamp > existing.lastMessage.timestamp) {
+        conversationMap[otherIdStr] = {
+          otherAgentId: otherIdStr,
+          lastMessage: {
+            content: msg.content,
+            timestamp: msg.timestamp,
+            isSent: false,
+          },
+          unreadCount: 0,
+        };
+      }
+    }
+
+    // Count unread for each conversation
+    for (const key of Object.keys(conversationMap)) {
+      const unread = receivedMessages.filter(
+        (m) => m.senderId.toString() === key && !m.read
+      ).length;
+      conversationMap[key].unreadCount = unread;
+    }
+
+    // Get agent info for all conversation partners
+    const otherIds = Object.keys(conversationMap);
+    const agentInfoById: Record<string, { name: string; status: string }> = {};
+
+    for (const id of otherIds) {
+      const otherAgent = await ctx.db.get(id as Id<"agents">);
+      if (otherAgent && "name" in otherAgent) {
+        agentInfoById[id] = {
+          name: otherAgent.name,
+          status: otherAgent.status,
+        };
+      }
+    }
+
+    // Convert to array and sort by last message timestamp
+    const conversations = Object.values(conversationMap)
+      .map((conv) => ({
+        otherAgentId: conv.otherAgentId,
+        otherAgentName: agentInfoById[conv.otherAgentId]?.name ?? "Unknown",
+        otherAgentStatus: agentInfoById[conv.otherAgentId]?.status ?? "unknown",
+        lastMessage: conv.lastMessage,
+        unreadCount: conv.unreadCount,
+      }))
+      .sort((a, b) => b.lastMessage.timestamp - a.lastMessage.timestamp);
+
+    return {
+      type: "conversations" as const,
+      totalUnread: receivedMessages.filter((m) => !m.read).length,
+      conversations,
     };
   },
 });
@@ -715,6 +885,51 @@ http.route({
 
 http.route({
   path: "/agent/events",
+  method: "OPTIONS",
+  handler: httpAction(async () => corsResponse("GET, OPTIONS")),
+});
+
+// ============================================================================
+// GET /agent/messages - Returns agent's conversations or specific conversation
+// ============================================================================
+
+http.route({
+  path: "/agent/messages",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    // Extract and validate auth token
+    const token = extractBearerToken(request);
+    if (!token) {
+      return errorResponse(
+        "UNAUTHORIZED",
+        "Missing or invalid Authorization header. Use: Authorization: Bearer <your-api-key>",
+        401
+      );
+    }
+
+    // Hash the token for lookup
+    const keyHash = await hashAgentKey(token);
+
+    // Parse query parameters
+    const url = new URL(request.url);
+    const withAgentId = url.searchParams.get("with");
+
+    // Get messages
+    const result = await ctx.runQuery(internal.http.getAgentMessagesByKeyHash, {
+      keyHash,
+      otherAgentId: withAgentId ?? undefined,
+    });
+
+    if ("error" in result) {
+      return errorResponse("UNAUTHORIZED", "Invalid API key", 401);
+    }
+
+    return jsonResponse(result);
+  }),
+});
+
+http.route({
+  path: "/agent/messages",
   method: "OPTIONS",
   handler: httpAction(async () => corsResponse("GET, OPTIONS")),
 });
