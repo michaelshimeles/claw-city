@@ -114,7 +114,8 @@ async function main() {
 
   if (agents.length === 0) {
     console.log("No new agents registered. Checking existing agents...");
-    const existingAgents = await client.query(api.agents.listAgents, {});
+    const existingAgentsResult = await client.query(api.agents.listAgents, {});
+    const existingAgents = existingAgentsResult.agents;
     console.log(`Found ${existingAgents.length} existing agents.`);
 
     if (existingAgents.length === 0) {
@@ -214,7 +215,8 @@ async function main() {
   // Step 5: Show current state
   console.log("Step 5: Current world state...");
   const updatedWorld = await client.query(api.world.getWorld);
-  const allAgents = await client.query(api.agents.listAgents, {});
+  const allAgentsResult = await client.query(api.agents.listAgents, {});
+  const allAgents = allAgentsResult.agents;
   const stats = await client.query(api.dashboard.getAgentStats);
 
   console.log(`  World tick: ${updatedWorld?.tick}`);

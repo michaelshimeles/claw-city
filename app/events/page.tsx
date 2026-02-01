@@ -154,7 +154,8 @@ export default function EventsPage() {
   const [limit, setLimit] = useState(50);
 
   // Fetch agents for the agent filter dropdown
-  const agents = useQuery(api.agents.listAgents, {});
+  const agentsResult = useQuery(api.agents.listAgents, { limit: 100 });
+  const agents = agentsResult?.agents ?? [];
 
   // Fetch zones for displaying zone names
   const zones = useQuery(api.zones.listZones);

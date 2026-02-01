@@ -145,22 +145,25 @@ export const getRecentMapEvents = query({
 
     const minTick = Math.max(0, world.tick - ticksBack);
 
-    // Get recent events
-    const events = await ctx.db
-      .query("events")
-      .withIndex("by_tick")
-      .filter((q) =>
-        q.and(
-          q.gte(q.field("tick"), minTick),
-          q.or(
-            ...VISUAL_EVENT_TYPES.map((type) =>
-              q.eq(q.field("type"), type)
-            )
-          )
-        )
-      )
-      .order("desc")
-      .take(limit);
+    // Query each visual event type separately using by_type index for efficiency
+    // This avoids scanning all events and only reads relevant ones
+    const perTypeLimit = Math.ceil(limit / VISUAL_EVENT_TYPES.length) + 5;
+    const eventQueries = VISUAL_EVENT_TYPES.map((type) =>
+      ctx.db
+        .query("events")
+        .withIndex("by_type", (q) => q.eq("type", type))
+        .filter((q) => q.gte(q.field("tick"), minTick))
+        .order("desc")
+        .take(perTypeLimit)
+    );
+
+    const eventArrays = await Promise.all(eventQueries);
+
+    // Merge and sort by tick descending, then take limit
+    const events = eventArrays
+      .flat()
+      .sort((a, b) => b.tick - a.tick || b.timestamp - a.timestamp)
+      .slice(0, limit);
 
     // Get zones for location data
     const zones = await ctx.db.query("zones").collect();

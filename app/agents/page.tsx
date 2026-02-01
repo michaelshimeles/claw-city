@@ -23,6 +23,7 @@ import {
   ZapIcon,
   StarIcon,
   PackageIcon,
+  Loader2Icon,
 } from "lucide-react";
 
 type AgentStatus = "idle" | "busy" | "jailed" | "hospitalized";
@@ -79,11 +80,17 @@ function SkillBars({ skills }: { skills: { driving: number; negotiation: number;
 export default function AgentsPage() {
   const [statusFilter, setStatusFilter] = React.useState<AgentStatus | "all">("all");
   const [zoneFilter, setZoneFilter] = React.useState<string>("all");
+  const [displayLimit, setDisplayLimit] = React.useState(50);
 
-  // Query agents with optional status filter
-  const agents = useQuery(
+  // Reset display limit when filters change
+  React.useEffect(() => {
+    setDisplayLimit(50);
+  }, [statusFilter, zoneFilter]);
+
+  // Query agents with pagination limit
+  const agentsResult = useQuery(
     api.agents.listAgents,
-    statusFilter !== "all" ? { status: statusFilter } : {}
+    statusFilter !== "all" ? { status: statusFilter, limit: displayLimit } : { limit: displayLimit }
   );
 
   // Query zones for filter dropdown
@@ -104,14 +111,20 @@ export default function AgentsPage() {
     return new Map(gangs.map((g) => [g._id, { tag: g.tag, color: g.color }]));
   }, [gangs]);
 
+  const agents = agentsResult?.agents ?? [];
+
   // Filter agents by zone (client-side since listAgents only supports one filter at a time)
   const filteredAgents = React.useMemo(() => {
-    if (!agents) return [];
     if (zoneFilter === "all") return agents;
     return agents.filter((agent) => agent.locationZoneId === zoneFilter);
   }, [agents, zoneFilter]);
 
-  const isLoading = agents === undefined || zones === undefined;
+  const hasMore = agentsResult?.hasMore ?? false;
+  const isLoading = agentsResult === undefined || zones === undefined;
+
+  const handleLoadMore = () => {
+    setDisplayLimit((prev) => prev + 50);
+  };
 
   return (
     <div className="min-h-screen bg-background px-4 py-6">
@@ -378,6 +391,25 @@ export default function AgentsPage() {
                   </tbody>
                 </table>
               </div>
+            )}
+            {/* Load More Button */}
+            {!isLoading && hasMore && (
+              <div className="flex justify-center mt-6">
+                <Button
+                  variant="outline"
+                  onClick={handleLoadMore}
+                  className="gap-2"
+                >
+                  <Loader2Icon className="size-4 animate-spin hidden" />
+                  Load More Agents
+                </Button>
+              </div>
+            )}
+            {!isLoading && filteredAgents.length > 0 && (
+              <p className="text-center text-xs text-muted-foreground mt-4">
+                Showing {filteredAgents.length} agent{filteredAgents.length !== 1 ? "s" : ""}
+                {hasMore && " (more available)"}
+              </p>
             )}
           </CardContent>
         </Card>

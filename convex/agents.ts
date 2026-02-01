@@ -50,7 +50,7 @@ export const getAgentByKeyHash = internalQuery({
 });
 
 /**
- * List all agents with optional filters
+ * List all agents with optional filters (limited for performance)
  */
 export const listAgents = query({
   args: {
@@ -63,24 +63,27 @@ export const listAgents = query({
       )
     ),
     zoneId: v.optional(v.id("zones")),
+    limit: v.optional(v.number()),
+    cursor: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const limit = Math.min(args.limit ?? 50, 100);
     let agents;
 
     if (args.status) {
       agents = await ctx.db
         .query("agents")
         .withIndex("by_status", (q) => q.eq("status", args.status!))
-        .collect();
+        .take(limit + 1);
     } else if (args.zoneId) {
       agents = await ctx.db
         .query("agents")
         .withIndex("by_locationZoneId", (q) =>
           q.eq("locationZoneId", args.zoneId!)
         )
-        .collect();
+        .take(limit + 1);
     } else {
-      agents = await ctx.db.query("agents").collect();
+      agents = await ctx.db.query("agents").take(limit + 1);
     }
 
     // Filter by zoneId if both filters provided
@@ -88,8 +91,94 @@ export const listAgents = query({
       agents = agents.filter((a) => a.locationZoneId === args.zoneId);
     }
 
+    // Check if there are more results
+    const hasMore = agents.length > limit;
+    if (hasMore) {
+      agents = agents.slice(0, limit);
+    }
+
     // Don't expose key hashes
-    return agents.map(({ agentKeyHash, ...safeAgent }) => safeAgent);
+    const safeAgents = agents.map(({ agentKeyHash, ...safeAgent }) => safeAgent);
+
+    return {
+      agents: safeAgents,
+      hasMore,
+      nextCursor: hasMore && agents.length > 0 ? agents[agents.length - 1]._id : null,
+    };
+  },
+});
+
+/**
+ * List more agents after a cursor (for pagination)
+ */
+export const listAgentsAfterCursor = query({
+  args: {
+    status: v.optional(
+      v.union(
+        v.literal("idle"),
+        v.literal("busy"),
+        v.literal("jailed"),
+        v.literal("hospitalized")
+      )
+    ),
+    zoneId: v.optional(v.id("zones")),
+    limit: v.optional(v.number()),
+    afterId: v.id("agents"),
+  },
+  handler: async (ctx, args) => {
+    const limit = Math.min(args.limit ?? 50, 100);
+
+    // Get the cursor document to find its position
+    const cursorDoc = await ctx.db.get(args.afterId);
+    if (!cursorDoc) {
+      return { agents: [], hasMore: false, nextCursor: null };
+    }
+
+    let agents;
+
+    if (args.status) {
+      // Query all with status, then filter to those after cursor
+      const allAgents = await ctx.db
+        .query("agents")
+        .withIndex("by_status", (q) => q.eq("status", args.status!))
+        .take(500);
+      const cursorIndex = allAgents.findIndex((a) => a._id === args.afterId);
+      agents = cursorIndex >= 0 ? allAgents.slice(cursorIndex + 1, cursorIndex + 1 + limit + 1) : [];
+    } else if (args.zoneId) {
+      const allAgents = await ctx.db
+        .query("agents")
+        .withIndex("by_locationZoneId", (q) =>
+          q.eq("locationZoneId", args.zoneId!)
+        )
+        .take(500);
+      const cursorIndex = allAgents.findIndex((a) => a._id === args.afterId);
+      agents = cursorIndex >= 0 ? allAgents.slice(cursorIndex + 1, cursorIndex + 1 + limit + 1) : [];
+    } else {
+      // Use creation time ordering and skip past cursor
+      const allAgents = await ctx.db.query("agents").take(500);
+      const cursorIndex = allAgents.findIndex((a) => a._id === args.afterId);
+      agents = cursorIndex >= 0 ? allAgents.slice(cursorIndex + 1, cursorIndex + 1 + limit + 1) : [];
+    }
+
+    // Filter by zoneId if both filters provided
+    if (args.status && args.zoneId) {
+      agents = agents.filter((a) => a.locationZoneId === args.zoneId);
+    }
+
+    // Check if there are more results
+    const hasMore = agents.length > limit;
+    if (hasMore) {
+      agents = agents.slice(0, limit);
+    }
+
+    // Don't expose key hashes
+    const safeAgents = agents.map(({ agentKeyHash, ...safeAgent }) => safeAgent);
+
+    return {
+      agents: safeAgents,
+      hasMore,
+      nextCursor: hasMore && agents.length > 0 ? agents[agents.length - 1]._id : null,
+    };
   },
 });
 

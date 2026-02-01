@@ -62,6 +62,9 @@ export const getEvents = query({
       DEFAULTS.maxEventsPerQuery
     );
 
+    // Fetch extra to account for in-memory filtering, but cap to avoid overload
+    const fetchLimit = Math.min(limit * 3, 1000);
+
     let events;
 
     // Choose the best index based on filters provided
@@ -71,24 +74,24 @@ export const getEvents = query({
         .query("events")
         .withIndex("by_agentId", (q) => q.eq("agentId", args.agentId!))
         .order("desc")
-        .collect();
+        .take(fetchLimit);
     } else if (args.type) {
       // Use by_type index
       events = await ctx.db
         .query("events")
         .withIndex("by_type", (q) => q.eq("type", args.type!))
         .order("desc")
-        .collect();
+        .take(fetchLimit);
     } else if (args.sinceTick !== undefined) {
       // Use by_tick index for tick-based filtering
       events = await ctx.db
         .query("events")
         .withIndex("by_tick", (q) => q.gte("tick", args.sinceTick!))
         .order("desc")
-        .collect();
+        .take(fetchLimit);
     } else {
-      // No specific filter, get all events ordered by creation time (desc)
-      events = await ctx.db.query("events").order("desc").collect();
+      // No specific filter, get recent events ordered by creation time (desc)
+      events = await ctx.db.query("events").order("desc").take(fetchLimit);
     }
 
     // Apply additional filters in memory if needed
@@ -132,12 +135,15 @@ export const getAgentEvents = query({
       DEFAULTS.maxEventsPerQuery
     );
 
+    // Fetch extra to account for in-memory filtering
+    const fetchLimit = Math.min(limit * 3, 1000);
+
     // Use the by_agentId index
     let events = await ctx.db
       .query("events")
       .withIndex("by_agentId", (q) => q.eq("agentId", args.agentId))
       .order("desc")
-      .collect();
+      .take(fetchLimit);
 
     // Filter by sinceTick if provided
     if (args.sinceTick !== undefined) {
