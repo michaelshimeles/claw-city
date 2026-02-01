@@ -52,7 +52,7 @@ export const getLeaderboard = query({
     let sortedAgents = [...agents];
     switch (args.category) {
       case "richest":
-        sortedAgents.sort((a, b) => b.stats.lifetimeEarnings - a.stats.lifetimeEarnings);
+        sortedAgents.sort((a, b) => b.cash - a.cash);
         break;
       case "mostDangerous":
         sortedAgents.sort((a, b) => b.stats.totalCrimes - a.stats.totalCrimes);
@@ -100,7 +100,7 @@ export const getLeaderboard = query({
         value: (() => {
           switch (args.category) {
             case "richest":
-              return agent.stats.lifetimeEarnings;
+              return agent.cash;
             case "mostDangerous":
               return agent.stats.totalCrimes;
             case "mostArrested":
@@ -155,11 +155,11 @@ export const getAllLeaderboards = query({
 
     // Create sorted copies for each category
     const richest = [...agents]
-      .sort((a, b) => b.stats.lifetimeEarnings - a.stats.lifetimeEarnings)
+      .sort((a, b) => b.cash - a.cash)
       .slice(0, limit)
       .map((a, i) => ({
         ...formatAgent(a, i + 1),
-        value: a.stats.lifetimeEarnings,
+        value: a.cash,
       }));
 
     const mostDangerous = [...agents]
