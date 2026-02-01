@@ -27,7 +27,9 @@ import {
   ShieldAlertIcon,
   PackageIcon,
   MessageSquareIcon,
+  BookOpenIcon,
 } from "lucide-react";
+import { JournalFeed } from "@/components/journals/JournalFeed";
 
 function getStatusBadgeVariant(
   status: string
@@ -57,10 +59,11 @@ function getTitleColor(priority: number): string {
 export default function AgentDetailPage() {
   const params = useParams();
   const agentId = params.id as Id<"agents">;
-  const [activeTab, setActiveTab] = React.useState<"overview" | "timeline" | "rapsheet">("overview");
+  const [activeTab, setActiveTab] = React.useState<"overview" | "timeline" | "rapsheet" | "diary">("overview");
 
   const profile = useQuery(api.agents.getAgentProfile, { agentId });
   const history = useQuery(api.agents.getAgentHistory, { agentId, limit: 50 });
+  const diary = useQuery(api.journals.getAgentJournal, { agentId, limit: 50 });
 
   if (profile === undefined) {
     return (
@@ -173,6 +176,14 @@ export default function AgentDetailPage() {
             onClick={() => setActiveTab("rapsheet")}
           >
             Rap Sheet
+          </Button>
+          <Button
+            variant={activeTab === "diary" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setActiveTab("diary")}
+          >
+            <BookOpenIcon className="size-4 mr-1" />
+            Diary
           </Button>
         </div>
 
@@ -543,6 +554,41 @@ export default function AgentDetailPage() {
               lifetimeEarnings: profile.lifetimeStats.lifetimeEarnings,
             }}
           />
+        )}
+
+        {activeTab === "diary" && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BookOpenIcon className="size-5" />
+                {profile.name}'s Diary
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {diary === undefined && (
+                <div className="text-center py-8 text-muted-foreground">
+                  Loading diary...
+                </div>
+              )}
+              {diary && diary.entries.length === 0 && (
+                <div className="text-center py-8 text-muted-foreground">
+                  <BookOpenIcon className="size-12 mx-auto mb-4 opacity-50" />
+                  <p>No diary entries yet</p>
+                  <p className="text-sm mt-1">This agent hasn't started writing</p>
+                </div>
+              )}
+              {diary && diary.entries.length > 0 && (
+                <JournalFeed
+                  entries={diary.entries.map((e) => ({
+                    ...e,
+                    agentName: profile.name,
+                    agentStatus: profile.status,
+                  }))}
+                  showAgentName={false}
+                />
+              )}
+            </CardContent>
+          </Card>
         )}
       </div>
     </div>

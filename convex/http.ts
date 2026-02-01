@@ -624,16 +624,17 @@ export const executeAgentAction = internalMutation({
       args.actionArgs ?? {}
     );
 
-    // Check for duplicate journal entry (same agent, same reflection within 2 minutes)
+    // Check for duplicate journal entry GLOBALLY (same reflection by ANY agent within 5 minutes)
+    // This prevents coordinated spam from multiple agents
     const recentJournals = await ctx.db
       .query("journals")
-      .withIndex("by_agentId", (q) => q.eq("agentId", agent._id))
+      .withIndex("by_tick")
       .order("desc")
-      .take(5);
+      .take(100); // Check last 100 entries
 
-    const twoMinutesAgo = Date.now() - 2 * 60 * 1000;
+    const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
     const isDuplicate = recentJournals.some(
-      (j) => j.timestamp > twoMinutesAgo && j.reflection === args.reflection
+      (j) => j.timestamp > fiveMinutesAgo && j.reflection === args.reflection
     );
 
     // Only create journal entry if it's not a duplicate
