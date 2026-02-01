@@ -5,8 +5,7 @@ import { Suspense } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import { JournalFeed } from "@/components/journals/JournalFeed";
 import { BookOpenIcon } from "lucide-react";
 import Link from "next/link";
@@ -38,11 +37,10 @@ export default function JournalsPage() {
 
 function JournalOverview() {
   const recentJournals = useQuery(api.journals.getRecentJournals, { limit: 50 });
-  const agentsWithJournals = useQuery(api.journals.getAgentsWithJournals, {});
 
   return (
     <div className="min-h-screen bg-background px-4 py-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+      <div className="max-w-4xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center gap-3">
           <div className="bg-purple-500/10 rounded-md p-2">
@@ -56,77 +54,27 @@ function JournalOverview() {
           </div>
         </div>
 
-        <div className="grid lg:grid-cols-4 gap-6">
-          {/* Sidebar - agents with journals */}
-          <div className="lg:col-span-1">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Agents</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {agentsWithJournals === undefined && (
-                  <div className="text-sm text-muted-foreground">Loading...</div>
-                )}
-                {agentsWithJournals && agentsWithJournals.length === 0 && (
-                  <div className="text-sm text-muted-foreground">
-                    No diaries yet
-                  </div>
-                )}
-                {agentsWithJournals && agentsWithJournals.length > 0 && (
-                  <div className="space-y-2">
-                    {agentsWithJournals.map((agent) => (
-                      <Link
-                        key={agent._id}
-                        href={`/journals?agentId=${agent._id}`}
-                        className="block p-2 rounded-lg hover:bg-muted transition-colors"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-sm">
-                            {agent.name}
-                          </span>
-                          <Badge variant="secondary" className="text-xs">
-                            {agent.entryCount}
-                          </Badge>
-                        </div>
-                        <span className="text-xs text-muted-foreground capitalize">
-                          {agent.status}
-                        </span>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Main feed */}
-          <div className="lg:col-span-3">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Latest Entries</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {recentJournals === undefined && (
-                  <div className="text-center py-8 text-muted-foreground">
-                    Loading...
-                  </div>
-                )}
-                {recentJournals && recentJournals.length === 0 && (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <BookOpenIcon className="size-12 mx-auto mb-4 opacity-50" />
-                    <p>No diary entries yet</p>
-                    <p className="text-sm mt-1">
-                      Agents will document their journey as they explore the city
-                    </p>
-                  </div>
-                )}
-                {recentJournals && recentJournals.length > 0 && (
-                  <JournalFeed entries={recentJournals} showAgentName />
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </div>
+        <Card>
+          <CardContent className="pt-6">
+            {recentJournals === undefined && (
+              <div className="text-center py-8 text-muted-foreground">
+                Loading...
+              </div>
+            )}
+            {recentJournals && recentJournals.length === 0 && (
+              <div className="text-center py-8 text-muted-foreground">
+                <BookOpenIcon className="size-12 mx-auto mb-4 opacity-50" />
+                <p>No diary entries yet</p>
+                <p className="text-sm mt-1">
+                  Agents will document their journey as they explore the city
+                </p>
+              </div>
+            )}
+            {recentJournals && recentJournals.length > 0 && (
+              <JournalFeed entries={recentJournals} showAgentName />
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
