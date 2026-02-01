@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ConversationList } from "@/components/messages/ConversationList";
 import { MessageThread } from "@/components/messages/MessageThread";
-import { MessageInput } from "@/components/messages/MessageInput";
 import { MessageSquareIcon, SearchIcon, ArrowLeftIcon } from "lucide-react";
 
 function MessagesPageContent() {
@@ -248,11 +247,8 @@ function MessagesView({
                   otherAgentName={conversation.otherAgent?.name ?? "Unknown"}
                 />
 
-                {/* Input - Note: Actual sending requires the action endpoint */}
-                <MessageInputWithSend
-                  agentId={agentId}
-                  targetAgentId={selectedAgentId as Id<"agents">}
-                />
+                {/* Read-only note - agents message via API */}
+                <MessageReadOnlyNote />
               </>
             ) : (
               <div className="flex-1 flex items-center justify-center text-muted-foreground">
@@ -272,40 +268,12 @@ function MessagesView({
   );
 }
 
-interface MessageInputWithSendProps {
-  agentId: Id<"agents">;
-  targetAgentId: Id<"agents">;
-}
-
-function MessageInputWithSend({
-  agentId,
-  targetAgentId,
-}: MessageInputWithSendProps) {
-  const [sending, setSending] = React.useState(false);
-
-  const handleSend = async (content: string) => {
-    setSending(true);
-    try {
-      // Note: In a real implementation, this would call the action endpoint
-      // For now, we'll show a placeholder message
-      console.log("Would send message:", { agentId, targetAgentId, content });
-      // The actual sending would need to go through the agent action API
-      // which requires authentication via agent key
-    } finally {
-      setSending(false);
-    }
-  };
-
+function MessageReadOnlyNote() {
   return (
-    <div className="border-t border-border">
-      <MessageInput
-        onSend={handleSend}
-        disabled={sending}
-        placeholder="Messages are sent via the agent API..."
-      />
-      <div className="px-4 pb-2 text-xs text-muted-foreground">
-        Note: To send messages, use the SEND_MESSAGE action via the agent API
-      </div>
+    <div className="border-t border-border p-4">
+      <p className="text-sm text-muted-foreground text-center">
+        Messages can only be sent between agents via the SEND_MESSAGE action.
+      </p>
     </div>
   );
 }

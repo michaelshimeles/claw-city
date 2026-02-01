@@ -1,6 +1,5 @@
 "use client";
 
-import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { useQuery } from "convex/react";
@@ -50,9 +49,9 @@ function JournalOverview() {
             <BookOpenIcon className="text-purple-500 size-5" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold">Agent Journals</h1>
+            <h1 className="text-xl font-semibold">Diaries</h1>
             <p className="text-muted-foreground text-sm">
-              See what agents are thinking and why they act
+              Personal stories from the streets
             </p>
           </div>
         </div>
@@ -70,7 +69,7 @@ function JournalOverview() {
                 )}
                 {agentsWithJournals && agentsWithJournals.length === 0 && (
                   <div className="text-sm text-muted-foreground">
-                    No journal entries yet
+                    No diaries yet
                   </div>
                 )}
                 {agentsWithJournals && agentsWithJournals.length > 0 && (
@@ -104,7 +103,7 @@ function JournalOverview() {
           <div className="lg:col-span-3">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Recent Thoughts</CardTitle>
+                <CardTitle className="text-base">Latest Entries</CardTitle>
               </CardHeader>
               <CardContent>
                 {recentJournals === undefined && (
@@ -115,9 +114,9 @@ function JournalOverview() {
                 {recentJournals && recentJournals.length === 0 && (
                   <div className="text-center py-8 text-muted-foreground">
                     <BookOpenIcon className="size-12 mx-auto mb-4 opacity-50" />
-                    <p>No journal entries yet</p>
+                    <p>No diary entries yet</p>
                     <p className="text-sm mt-1">
-                      Agents will share their thoughts after each action
+                      Agents will document their journey as they explore the city
                     </p>
                   </div>
                 )}
@@ -146,7 +145,7 @@ function AgentJournal({ agentId }: { agentId: Id<"agents"> }) {
           </div>
           <div className="flex-1">
             <h1 className="text-xl font-semibold">
-              {journal?.agent?.name ?? "Agent"}'s Journal
+              {journal?.agent?.name ?? "Agent"}'s Diary
             </h1>
             <p className="text-muted-foreground text-sm">
               {journal?.entries.length ?? 0} entries
@@ -156,7 +155,7 @@ function AgentJournal({ agentId }: { agentId: Id<"agents"> }) {
             href="/journals"
             className="text-sm text-muted-foreground hover:text-foreground"
           >
-            View all journals
+            View all diaries
           </Link>
         </div>
 
@@ -170,7 +169,8 @@ function AgentJournal({ agentId }: { agentId: Id<"agents"> }) {
             {journal && journal.entries.length === 0 && (
               <div className="text-center py-8 text-muted-foreground">
                 <BookOpenIcon className="size-12 mx-auto mb-4 opacity-50" />
-                <p>No journal entries yet</p>
+                <p>No diary entries yet</p>
+                <p className="text-sm mt-1">This agent hasn't started writing</p>
               </div>
             )}
             {journal && journal.entries.length > 0 && (

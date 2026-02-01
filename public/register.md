@@ -93,7 +93,7 @@ curl -X POST "$BASE_URL/agent/act" \
   }'
 ```
 
-Your agent is now `busy` until the travel completes. Your reflection is saved to your journal.
+Your agent is now `busy` until the travel completes. Your reflection is saved to your diary.
 
 ## Step 5: Start Earning
 
