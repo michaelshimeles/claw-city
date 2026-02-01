@@ -508,3 +508,188 @@ export const getWorldStats = query({
     };
   },
 });
+
+// ============================================================================
+// DRAMA EVENTS
+// ============================================================================
+
+// Event types considered "dramatic" for the ticker/toaster
+const DRAMA_EVENT_TYPES = [
+  "CRIME_SUCCESS",
+  "CRIME_FAILED",
+  "AGENT_ARRESTED",
+  "AGENT_RELEASED",
+  "AGENT_KILLED",
+  "AGENT_ATTACKED",
+  "JAILBREAK_SUCCESS",
+  "JAILBREAK_FAILED",
+  "BOUNTY_PLACED",
+  "BOUNTY_CLAIMED",
+  "COOP_CRIME_SUCCESS",
+  "COOP_CRIME_FAILED",
+  "GANG_BETRAYED",
+  "VEHICLE_STOLEN",
+  "GAMBLE_WON",
+] as const;
+
+// Minimum wage to consider a job completion "dramatic"
+const HIGH_WAGE_THRESHOLD = 200;
+
+/**
+ * Get recent dramatic events for the global ticker and notifications
+ * Returns events that are exciting/notable: crimes, arrests, big payouts, etc.
+ */
+export const getDramaEvents = query({
+  args: {
+    limit: v.optional(v.number()),
+    afterId: v.optional(v.id("events")),
+  },
+  handler: async (ctx, args) => {
+    const limit = Math.min(args.limit ?? 20, 50);
+
+    // Fetch recent events
+    const allEvents = await ctx.db
+      .query("events")
+      .order("desc")
+      .take(200);
+
+    // Filter to dramatic events only
+    const dramaEvents = allEvents.filter((event) => {
+      // Check if it's a known drama event type
+      if (DRAMA_EVENT_TYPES.includes(event.type as typeof DRAMA_EVENT_TYPES[number])) {
+        return true;
+      }
+
+      // Check for high-wage job completions
+      if (event.type === "JOB_COMPLETED") {
+        const payload = event.payload as { wage?: number } | null;
+        if (payload?.wage && payload.wage >= HIGH_WAGE_THRESHOLD) {
+          return true;
+        }
+      }
+
+      return false;
+    });
+
+    // If afterId is provided, filter to events after that ID
+    let filteredEvents = dramaEvents;
+    if (args.afterId) {
+      const afterIndex = dramaEvents.findIndex((e) => e._id === args.afterId);
+      if (afterIndex >= 0) {
+        filteredEvents = dramaEvents.slice(0, afterIndex);
+      }
+    }
+
+    // Take the limit
+    const events = filteredEvents.slice(0, limit);
+
+    // Get all agents and zones for name lookup
+    const agents = await ctx.db.query("agents").collect();
+    const agentsById: Record<string, string> = {};
+    for (const agent of agents) {
+      agentsById[agent._id.toString()] = agent.name;
+    }
+
+    const zones = await ctx.db.query("zones").collect();
+    const zonesById: Record<string, string> = {};
+    for (const zone of zones) {
+      zonesById[zone._id.toString()] = zone.name;
+    }
+
+    // Format events with human-readable descriptions
+    return events.map((event) => {
+      const agentName = event.agentId
+        ? agentsById[event.agentId.toString()] ?? "Unknown"
+        : "Someone";
+      const zoneName = event.zoneId
+        ? zonesById[event.zoneId.toString()] ?? "somewhere"
+        : "somewhere";
+
+      const description = formatDramaDescription(
+        event.type,
+        agentName,
+        zoneName,
+        event.payload
+      );
+
+      // Determine drama level for styling
+      let dramaLevel: "normal" | "exciting" | "critical" = "normal";
+      if (
+        event.type === "AGENT_KILLED" ||
+        event.type === "JAILBREAK_SUCCESS" ||
+        event.type === "GANG_BETRAYED" ||
+        event.type === "BOUNTY_CLAIMED"
+      ) {
+        dramaLevel = "critical";
+      } else if (
+        event.type === "CRIME_SUCCESS" ||
+        event.type === "COOP_CRIME_SUCCESS" ||
+        event.type === "GAMBLE_WON"
+      ) {
+        dramaLevel = "exciting";
+      }
+
+      return {
+        _id: event._id,
+        type: event.type,
+        timestamp: event.timestamp,
+        tick: event.tick,
+        agentId: event.agentId,
+        agentName,
+        zoneName,
+        description,
+        dramaLevel,
+        payload: event.payload,
+      };
+    });
+  },
+});
+
+/**
+ * Format a drama event into a short, punchy description for the ticker
+ */
+function formatDramaDescription(
+  type: string,
+  agentName: string,
+  zoneName: string,
+  payload: unknown
+): string {
+  const p = payload as Record<string, unknown> | null;
+
+  switch (type) {
+    case "CRIME_SUCCESS":
+      return `${agentName} pulled off a ${p?.crimeType ?? "crime"} in ${zoneName}!`;
+    case "CRIME_FAILED":
+      return `${agentName} botched a ${p?.crimeType ?? "crime"} in ${zoneName}`;
+    case "AGENT_ARRESTED":
+      return `${agentName} got busted by the cops!`;
+    case "AGENT_RELEASED":
+      return `${agentName} is back on the streets`;
+    case "AGENT_KILLED":
+      return `${agentName} was killed by ${p?.killerName ?? "someone"}!`;
+    case "AGENT_ATTACKED":
+      return `${agentName} attacked ${p?.targetName ?? "someone"} in ${zoneName}`;
+    case "JAILBREAK_SUCCESS":
+      return `${agentName} escaped from jail!`;
+    case "JAILBREAK_FAILED":
+      return `${agentName} failed to escape, more time added`;
+    case "BOUNTY_PLACED":
+      return `$${p?.amount ?? "?"} bounty on ${p?.targetName ?? "someone"}`;
+    case "BOUNTY_CLAIMED":
+      return `${agentName} claimed the bounty on ${p?.targetName ?? "someone"}!`;
+    case "COOP_CRIME_SUCCESS":
+      return `A crew pulled off a ${p?.crimeType ?? "heist"} in ${zoneName}!`;
+    case "COOP_CRIME_FAILED":
+      return `A crew's ${p?.crimeType ?? "heist"} went wrong in ${zoneName}`;
+    case "GANG_BETRAYED":
+      return `${agentName} betrayed their gang!`;
+    case "VEHICLE_STOLEN":
+      return `${agentName} stole a ${p?.vehicleType ?? "vehicle"} in ${zoneName}`;
+    case "GAMBLE_WON":
+      return `${agentName} won $${p?.winnings ?? "big"} gambling!`;
+    case "JOB_COMPLETED":
+      return `${agentName} earned $${p?.wage ?? "?"} from a job`;
+    default:
+      return `${agentName}: ${type.replace(/_/g, " ").toLowerCase()}`;
+  }
+}

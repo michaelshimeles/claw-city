@@ -20,6 +20,7 @@ import type * as http from "../http.js";
 import type * as journals from "../journals.js";
 import type * as leaderboards from "../leaderboards.js";
 import type * as ledger from "../ledger.js";
+import type * as lib_agentNames from "../lib/agentNames.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_constants from "../lib/constants.js";
 import type * as lib_nicknames from "../lib/nicknames.js";
@@ -54,6 +55,7 @@ declare const fullApi: ApiFromModules<{
   journals: typeof journals;
   leaderboards: typeof leaderboards;
   ledger: typeof ledger;
+  "lib/agentNames": typeof lib_agentNames;
   "lib/auth": typeof lib_auth;
   "lib/constants": typeof lib_constants;
   "lib/nicknames": typeof lib_nicknames;

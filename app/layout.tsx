@@ -3,6 +3,8 @@ import { Geist, Geist_Mono, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { ConvexClientProvider } from "@/lib/convex";
 import { Navigation } from "@/components/layout/Navigation";
+import { GlobalTicker } from "@/components/activity/GlobalTicker";
+import { DramaToaster } from "@/components/notifications/DramaToaster";
 import { Analytics } from "@vercel/analytics/next";
 
 const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-sans' });
@@ -77,7 +79,9 @@ export default function RootLayout({
       >
         <ConvexClientProvider>
           <Navigation />
+          <GlobalTicker />
           <main>{children}</main>
+          <DramaToaster />
           <Analytics />
         </ConvexClientProvider>
       </body>

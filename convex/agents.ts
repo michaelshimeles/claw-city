@@ -12,6 +12,7 @@ import {
 } from "./_generated/server";
 import { generateAgentKey, hashAgentKey, validateAdminKey } from "./lib/auth";
 import { DEFAULTS, TAX_DEFAULTS } from "./lib/constants";
+import { generateUniqueAgentName } from "./lib/agentNames";
 
 // ============================================================================
 // QUERIES
@@ -409,6 +410,83 @@ export const registerAgent = mutation({
     return {
       agentId,
       apiKey,
+    };
+  },
+});
+
+/**
+ * Batch register multiple agents at once with varied names
+ * Useful for populating the world quickly
+ */
+export const batchRegisterAgents = mutation({
+  args: { count: v.number() },
+  handler: async (ctx, { count }) => {
+    // Limit to 50 agents per call to avoid timeouts
+    const numToCreate = Math.min(count, 50);
+
+    // Get all zones for random placement
+    const zones = await ctx.db.query("zones").collect();
+    if (zones.length === 0) {
+      throw new Error("No zones found. Please seed the database first.");
+    }
+
+    // Get existing agent names to avoid duplicates
+    const existingAgents = await ctx.db.query("agents").collect();
+    const existingNames = new Set(existingAgents.map((a) => a.name));
+
+    // Get current world tick for tax scheduling
+    const world = await ctx.db.query("world").first();
+    const currentTick = world?.tick ?? 0;
+
+    const created: string[] = [];
+
+    for (let i = 0; i < numToCreate; i++) {
+      // Generate a unique name
+      const name = generateUniqueAgentName(existingNames);
+      existingNames.add(name);
+
+      // Pick a random zone
+      const zone = zones[Math.floor(Math.random() * zones.length)];
+
+      // Generate random starting cash (100-500)
+      const startingCash = 100 + Math.floor(Math.random() * 400);
+
+      // Generate the API key
+      const apiKey = generateAgentKey();
+      const keyHash = await hashAgentKey(apiKey);
+
+      // Create the agent
+      const agentId = await ctx.db.insert("agents", {
+        agentKeyHash: keyHash,
+        name: name,
+        createdAt: Date.now(),
+        locationZoneId: zone._id,
+        cash: startingCash,
+        health: DEFAULTS.startingHealth,
+        stamina: DEFAULTS.startingStamina,
+        reputation: DEFAULTS.startingReputation,
+        heat: DEFAULTS.startingHeat,
+        status: "idle",
+        busyUntilTick: null,
+        busyAction: null,
+        inventory: [],
+        skills: { ...DEFAULTS.startingSkills },
+        stats: {
+          lifetimeEarnings: 0,
+          totalCrimes: 0,
+          totalArrests: 0,
+          jobsCompleted: 0,
+          daysSurvived: 0,
+        },
+        taxDueTick: currentTick + TAX_DEFAULTS.taxIntervalTicks,
+      });
+
+      created.push(agentId);
+    }
+
+    return {
+      created: created.length,
+      agentIds: created,
     };
   },
 });
