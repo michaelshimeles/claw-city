@@ -48,6 +48,112 @@ function formatActionName(action: string): string {
     .join(" ");
 }
 
+function formatResultData(data: unknown): React.ReactNode {
+  if (data === null || data === undefined) return null;
+
+  // Handle primitive types
+  if (typeof data === "string") return data;
+  if (typeof data === "number") return data.toLocaleString();
+  if (typeof data === "boolean") return data ? "Yes" : "No";
+
+  // Handle objects
+  if (typeof data === "object") {
+    const obj = data as Record<string, unknown>;
+    const items: { label: string; value: string }[] = [];
+
+    // Job-related fields
+    if ("completionTick" in obj) {
+      items.push({ label: "Completes at tick", value: String(obj.completionTick) });
+    }
+    if ("jobDetails" in obj && typeof obj.jobDetails === "object" && obj.jobDetails) {
+      const job = obj.jobDetails as Record<string, unknown>;
+      if (job.jobName) items.push({ label: "Job", value: String(job.jobName) });
+      if (job.wage) items.push({ label: "Wage", value: `$${Number(job.wage).toLocaleString()}` });
+      if (job.durationTicks) items.push({ label: "Duration", value: `${job.durationTicks} ticks` });
+    }
+
+    // Transaction fields
+    if ("amount" in obj && typeof obj.amount === "number") {
+      items.push({ label: "Amount", value: `$${obj.amount.toLocaleString()}` });
+    }
+    if ("newCash" in obj && typeof obj.newCash === "number") {
+      items.push({ label: "New balance", value: `$${obj.newCash.toLocaleString()}` });
+    }
+    if ("newHeat" in obj && typeof obj.newHeat === "number") {
+      items.push({ label: "Heat level", value: String(obj.newHeat) });
+    }
+
+    // Movement fields
+    if ("fromZone" in obj) {
+      items.push({ label: "From", value: String(obj.fromZone) });
+    }
+    if ("toZone" in obj) {
+      items.push({ label: "To", value: String(obj.toZone) });
+    }
+    if ("newZone" in obj) {
+      items.push({ label: "New location", value: String(obj.newZone) });
+    }
+
+    // Social fields
+    if ("targetAgent" in obj || "targetAgentName" in obj) {
+      items.push({ label: "Target", value: String(obj.targetAgentName || obj.targetAgent) });
+    }
+    if ("relationship" in obj) {
+      items.push({ label: "Relationship", value: String(obj.relationship) });
+    }
+
+    // Item fields
+    if ("itemName" in obj) {
+      items.push({ label: "Item", value: String(obj.itemName) });
+    }
+    if ("quantity" in obj) {
+      items.push({ label: "Quantity", value: String(obj.quantity) });
+    }
+    if ("price" in obj && typeof obj.price === "number") {
+      items.push({ label: "Price", value: `$${obj.price.toLocaleString()}` });
+    }
+
+    // Generic message
+    if ("message" in obj && typeof obj.message === "string") {
+      items.push({ label: "Note", value: obj.message });
+    }
+
+    // If we extracted known fields, display them nicely
+    if (items.length > 0) {
+      return (
+        <div className="space-y-1">
+          {items.map((item, idx) => (
+            <div key={idx} className="flex gap-2">
+              <span className="text-muted-foreground">{item.label}:</span>
+              <span className="text-green-500">{item.value}</span>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    // Fallback: format unknown object keys nicely
+    const entries = Object.entries(obj).filter(([, v]) => v !== null && v !== undefined);
+    if (entries.length > 0) {
+      return (
+        <div className="space-y-1">
+          {entries.map(([key, value]) => (
+            <div key={key} className="flex gap-2">
+              <span className="text-muted-foreground">{key.replace(/([A-Z])/g, " $1").trim()}:</span>
+              <span className="text-green-500">
+                {typeof value === "object" ? JSON.stringify(value) : String(value)}
+              </span>
+            </div>
+          ))}
+        </div>
+      );
+    }
+  }
+
+  // Final fallback
+  return String(data);
+}
+
 export function JournalFeed({ entries, showAgentName = true }: JournalFeedProps) {
   const [selectedEntry, setSelectedEntry] = useState<JournalEntry | null>(null);
   // Group entries by date
@@ -188,10 +294,10 @@ export function JournalFeed({ entries, showAgentName = true }: JournalFeedProps)
                   <div className="space-y-2">
                     {selectedEntry.result.success && selectedEntry.result.data != null ? (
                       <div className="text-sm">
-                        <span className="font-medium text-muted-foreground">Result: </span>
-                        <span className="text-green-500">
-                          {JSON.stringify(selectedEntry.result.data)}
-                        </span>
+                        <div className="font-medium text-muted-foreground mb-1">Result:</div>
+                        <div className="pl-2 border-l-2 border-green-500/30">
+                          {formatResultData(selectedEntry.result.data)}
+                        </div>
                       </div>
                     ) : null}
                     {!selectedEntry.result.success && selectedEntry.result.message ? (

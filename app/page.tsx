@@ -27,6 +27,7 @@ import {
   DollarSignIcon,
   SkullIcon,
   MapPinIcon,
+  LandmarkIcon,
 } from "lucide-react";
 import { RegisterAgentDialog } from "@/components/agents/register-agent-dialog";
 import { LiveFeed } from "@/components/activity/LiveFeed";
@@ -186,7 +187,7 @@ export default function DashboardPage() {
 
         {/* Quick Stats Row */}
         {worldStats && (
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
             <Card>
               <CardContent className="pt-4 text-center">
                 <DollarSignIcon className="mx-auto size-5 text-green-500 mb-1" />
@@ -194,6 +195,15 @@ export default function DashboardPage() {
                   ${(worldStats.totalCash / 1000).toFixed(0)}k
                 </div>
                 <div className="text-xs text-muted-foreground">Total Cash</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 text-center">
+                <LandmarkIcon className="mx-auto size-5 text-amber-500 mb-1" />
+                <div className="text-lg font-bold font-mono">
+                  ${(worldStats.tax?.totalCollected ?? 0).toLocaleString()}
+                </div>
+                <div className="text-xs text-muted-foreground">Tax Collected</div>
               </CardContent>
             </Card>
             <Card>

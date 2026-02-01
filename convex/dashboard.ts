@@ -449,6 +449,29 @@ export const getWorldStats = query({
       (e) => e.type === "AGENT_ARRESTED"
     ).length;
 
+    // Calculate tax collection stats
+    const taxEvents = recentEvents.filter((e) => e.type === "TAX_PAID");
+    const taxCollected24h = taxEvents.reduce((sum, e) => {
+      const payload = e.payload as { amount?: number } | null;
+      return sum + (payload?.amount ?? 0);
+    }, 0);
+
+    // Get all-time tax collected from all TAX_PAID events
+    const allTaxEvents = await ctx.db
+      .query("events")
+      .filter((q) => q.eq(q.field("type"), "TAX_PAID"))
+      .collect();
+    const totalTaxCollected = allTaxEvents.reduce((sum, e) => {
+      const payload = e.payload as { amount?: number } | null;
+      return sum + (payload?.amount ?? 0);
+    }, 0);
+
+    // Count agents with pending taxes
+    const agentsWithTaxDue = agents.filter(
+      (a) => (a.taxOwed ?? 0) > 0
+    ).length;
+    const totalTaxOwed = agents.reduce((sum, a) => sum + (a.taxOwed ?? 0), 0);
+
     return {
       currentTick,
       totalAgents: agents.length,
@@ -465,6 +488,12 @@ export const getWorldStats = query({
         busy: agents.filter((a) => a.status === "busy").length,
         jailed: agents.filter((a) => a.status === "jailed").length,
         hospitalized: agents.filter((a) => a.status === "hospitalized").length,
+      },
+      tax: {
+        collected24h: taxCollected24h,
+        totalCollected: totalTaxCollected,
+        agentsWithTaxDue,
+        totalOwed: totalTaxOwed,
       },
     };
   },
