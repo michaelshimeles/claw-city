@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import Link from "next/link";
+import html2canvas from "html2canvas";
 import {
   Dialog,
   DialogContent,
@@ -11,7 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CheckCircleIcon, XCircleIcon, Share2Icon, CopyIcon, CheckIcon } from "lucide-react";
+import { CheckCircleIcon, XCircleIcon, Share2Icon, CopyIcon, CheckIcon, ImageIcon, DownloadIcon, Loader2Icon } from "lucide-react";
 
 interface JournalEntry {
   _id: string;
@@ -158,6 +159,8 @@ function formatResultData(data: unknown): React.ReactNode {
 export function JournalFeed({ entries, showAgentName = true }: JournalFeedProps) {
   const [selectedEntry, setSelectedEntry] = useState<JournalEntry | null>(null);
   const [copied, setCopied] = useState(false);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const captureRef = useRef<HTMLDivElement>(null);
 
   const getShareText = (entry: JournalEntry) => {
     const mood = entry.mood ? ` feeling ${getMoodLabel(entry.mood)?.toLowerCase()}` : "";
@@ -176,6 +179,65 @@ export function JournalFeed({ entries, showAgentName = true }: JournalFeedProps)
     await navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const downloadImage = async (entry: JournalEntry) => {
+    if (!captureRef.current) return;
+    setIsGeneratingImage(true);
+
+    try {
+      const canvas = await html2canvas(captureRef.current, {
+        backgroundColor: "#0a0a0a",
+        scale: 2,
+        logging: false,
+        useCORS: true,
+      });
+
+      const link = document.createElement("a");
+      link.download = `clawcity-${entry.agentName.toLowerCase().replace(/\s+/g, "-")}-${entry.tick}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    } catch (error) {
+      console.error("Failed to generate image:", error);
+    } finally {
+      setIsGeneratingImage(false);
+    }
+  };
+
+  const copyImageToClipboard = async () => {
+    if (!captureRef.current) return;
+    setIsGeneratingImage(true);
+
+    try {
+      const canvas = await html2canvas(captureRef.current, {
+        backgroundColor: "#0a0a0a",
+        scale: 2,
+        logging: false,
+        useCORS: true,
+      });
+
+      canvas.toBlob(async (blob) => {
+        if (blob) {
+          try {
+            await navigator.clipboard.write([
+              new ClipboardItem({ "image/png": blob }),
+            ]);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          } catch {
+            // Fallback: download if clipboard fails
+            const link = document.createElement("a");
+            link.download = "clawcity-journal.png";
+            link.href = canvas.toDataURL("image/png");
+            link.click();
+          }
+        }
+        setIsGeneratingImage(false);
+      }, "image/png");
+    } catch (error) {
+      console.error("Failed to generate image:", error);
+      setIsGeneratingImage(false);
+    }
   };
   // Group entries by date
   const groupedEntries = entries.reduce((groups, entry) => {
@@ -342,7 +404,7 @@ export function JournalFeed({ entries, showAgentName = true }: JournalFeedProps)
                 )}
 
                 {/* Share buttons */}
-                <div className="flex items-center gap-2 pt-4 border-t border-border mt-4">
+                <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-border mt-4">
                   <span className="text-xs text-muted-foreground mr-2">
                     <Share2Icon className="size-3.5 inline mr-1" />
                     Share
@@ -359,6 +421,34 @@ export function JournalFeed({ entries, showAgentName = true }: JournalFeedProps)
                     Post on X
                   </Button>
                   <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => downloadImage(selectedEntry)}
+                    disabled={isGeneratingImage}
+                    className="gap-1.5"
+                  >
+                    {isGeneratingImage ? (
+                      <Loader2Icon className="size-3.5 animate-spin" />
+                    ) : (
+                      <DownloadIcon className="size-3.5" />
+                    )}
+                    Save Image
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={copyImageToClipboard}
+                    disabled={isGeneratingImage}
+                    className="gap-1.5"
+                  >
+                    {isGeneratingImage ? (
+                      <Loader2Icon className="size-3.5 animate-spin" />
+                    ) : (
+                      <ImageIcon className="size-3.5" />
+                    )}
+                    Copy Image
+                  </Button>
+                  <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => copyToClipboard(selectedEntry)}
@@ -372,10 +462,78 @@ export function JournalFeed({ entries, showAgentName = true }: JournalFeedProps)
                     ) : (
                       <>
                         <CopyIcon className="size-3.5" />
-                        Copy
+                        Copy Text
                       </>
                     )}
                   </Button>
+                </div>
+
+                {/* Hidden capture card for screenshot */}
+                <div
+                  ref={captureRef}
+                  className="absolute -left-[9999px] w-[500px] p-6 rounded-xl"
+                  style={{ backgroundColor: "#0a0a0a" }}
+                >
+                  <div className="space-y-4">
+                    {/* Header */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="size-10 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white font-bold">
+                          {selectedEntry.agentName.charAt(0)}
+                        </div>
+                        <div>
+                          <div className="font-semibold text-white">{selectedEntry.agentName}</div>
+                          {selectedEntry.mood && (
+                            <div className="text-sm text-gray-400">
+                              feeling {getMoodLabel(selectedEntry.mood)?.toLowerCase()}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xs text-gray-500">
+                          {format(new Date(selectedEntry.timestamp), "MMM d, yyyy")}
+                        </div>
+                        <div className="text-xs text-gray-600">Tick {selectedEntry.tick}</div>
+                      </div>
+                    </div>
+
+                    {/* Action badge */}
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-1 rounded text-xs font-mono bg-gray-800 text-gray-300 border border-gray-700">
+                        {formatActionName(selectedEntry.action)}
+                      </span>
+                      {selectedEntry.result && (
+                        selectedEntry.result.success ? (
+                          <span className="flex items-center gap-1 text-xs text-green-500">
+                            <CheckCircleIcon className="size-3.5" />
+                            Success
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 text-xs text-red-500">
+                            <XCircleIcon className="size-3.5" />
+                            Failed
+                          </span>
+                        )
+                      )}
+                    </div>
+
+                    {/* Reflection text */}
+                    <div className="bg-gray-900/50 rounded-lg p-4 border border-gray-800">
+                      <p className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap">
+                        &quot;{selectedEntry.reflection}&quot;
+                      </p>
+                    </div>
+
+                    {/* Footer branding */}
+                    <div className="flex items-center justify-between pt-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">🐾</span>
+                        <span className="font-bold text-white">ClawCity</span>
+                      </div>
+                      <span className="text-xs text-gray-500">AI agents living their best lives</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </>
