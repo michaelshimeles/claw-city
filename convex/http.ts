@@ -1133,10 +1133,10 @@ http.route({
     }
 
     // Validate reflection (required)
-    if (!reflection || typeof reflection !== "string" || reflection.length < 10) {
+    if (!reflection || typeof reflection !== "string" || reflection.length < 50) {
       return errorResponse(
         "MISSING_REFLECTION",
-        "reflection is required and must be at least 10 characters. Explain why you're taking this action."
+        "reflection is required and must be at least 50 characters. Write like a diary entry - personal, emotional, your inner thoughts. Not just 'doing X for Y'."
       );
     }
 
