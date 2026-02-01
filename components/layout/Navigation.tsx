@@ -35,7 +35,7 @@ export function Navigation() {
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between">
         {/* Logo/Title */}
         <div className="flex items-center gap-8">
-          <Link href="/" className="text-lg font-semibold text-foreground">
+          <Link href="/" className="text-3xl font-semibold text-foreground">
             🏙️
           </Link>
 
