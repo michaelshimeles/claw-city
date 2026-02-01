@@ -392,19 +392,30 @@ async function handleTakeJob(
   let job;
   try {
     job = await ctx.db.get(jobId as Id<"jobs">);
-  } catch {
+  } catch (e) {
     return {
       ok: false,
       error: "INVALID_JOB",
-      message: ERROR_CODES.INVALID_JOB,
+      message: `${ERROR_CODES.INVALID_JOB}. The jobId "${jobId}" is not a valid ID format. Use the jobId from your /state response.`,
     };
   }
 
   if (!job) {
+    // Get available jobs in agent's zone to help the AI
+    const availableJobs = await ctx.db
+      .query("jobs")
+      .withIndex("by_zoneId", (q) => q.eq("zoneId", agent.locationZoneId))
+      .filter((q) => q.eq(q.field("active"), true))
+      .take(5);
+
+    const jobHint = availableJobs.length > 0
+      ? ` Available jobs in your zone: ${availableJobs.map(j => `${j.title} (${j._id})`).join(", ")}`
+      : " No jobs currently available in your zone.";
+
     return {
       ok: false,
       error: "INVALID_JOB",
-      message: ERROR_CODES.INVALID_JOB,
+      message: `${ERROR_CODES.INVALID_JOB}. The jobId "${jobId}" was not found - it may have been deleted or the database was reset.${jobHint}`,
     };
   }
 
