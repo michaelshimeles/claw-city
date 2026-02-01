@@ -139,10 +139,70 @@ export function RelationshipGraph({
   const [hoveredNode, setHoveredNode] = React.useState<string | null>(null);
   const [selectedNode, setSelectedNode] = React.useState<string | null>(null);
 
+  // Zoom and pan state
+  const [scale, setScale] = React.useState(1);
+  const [translate, setTranslate] = React.useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = React.useState(false);
+  const [panStart, setPanStart] = React.useState({ x: 0, y: 0 });
+  const svgRef = React.useRef<SVGSVGElement>(null);
+
   const nodes = network?.nodes ?? [];
   const edges = network?.edges ?? [];
 
   const positions = useForceLayout(nodes, edges, width, height);
+
+  // Handle mouse wheel for zoom
+  const handleWheel = React.useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+    const newScale = Math.max(0.3, Math.min(3, scale * zoomFactor));
+
+    // Zoom toward mouse position
+    const svg = svgRef.current;
+    if (svg) {
+      const rect = svg.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      // Adjust translate to zoom toward mouse position
+      const scaleChange = newScale / scale;
+      setTranslate({
+        x: mouseX - (mouseX - translate.x) * scaleChange,
+        y: mouseY - (mouseY - translate.y) * scaleChange,
+      });
+    }
+
+    setScale(newScale);
+  }, [scale, translate]);
+
+  // Handle mouse down for pan start
+  const handleMouseDown = React.useCallback((e: React.MouseEvent) => {
+    if (e.button === 0) { // Left mouse button
+      setIsPanning(true);
+      setPanStart({ x: e.clientX - translate.x, y: e.clientY - translate.y });
+    }
+  }, [translate]);
+
+  // Handle mouse move for panning
+  const handleMouseMove = React.useCallback((e: React.MouseEvent) => {
+    if (isPanning) {
+      setTranslate({
+        x: e.clientX - panStart.x,
+        y: e.clientY - panStart.y,
+      });
+    }
+  }, [isPanning, panStart]);
+
+  // Handle mouse up to stop panning
+  const handleMouseUp = React.useCallback(() => {
+    setIsPanning(false);
+  }, []);
+
+  // Reset zoom/pan
+  const handleReset = React.useCallback(() => {
+    setScale(1);
+    setTranslate({ x: 0, y: 0 });
+  }, []);
 
   const handleNodeClick = (nodeId: string) => {
     setSelectedNode(nodeId === selectedNode ? null : nodeId);
@@ -179,10 +239,17 @@ export function RelationshipGraph({
   return (
     <div className="relative">
       <svg
+        ref={svgRef}
         width={width}
         height={height}
-        className="bg-muted/50 rounded-lg"
+        className="bg-muted/50 rounded-lg cursor-grab active:cursor-grabbing"
+        onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
       >
+        <g transform={`translate(${translate.x}, ${translate.y}) scale(${scale})`}>
         {/* Draw edges */}
         {edges.map((edge) => {
           const source = positions[edge.source];
@@ -255,7 +322,30 @@ export function RelationshipGraph({
             </g>
           );
         })}
+        </g>
       </svg>
+
+      {/* Zoom controls */}
+      <div className="absolute top-2 left-2 flex gap-1">
+        <button
+          onClick={() => setScale(Math.min(3, scale * 1.2))}
+          className="bg-background/90 dark:bg-card/90 border border-border rounded px-2 py-1 text-xs hover:bg-muted"
+        >
+          +
+        </button>
+        <button
+          onClick={() => setScale(Math.max(0.3, scale * 0.8))}
+          className="bg-background/90 dark:bg-card/90 border border-border rounded px-2 py-1 text-xs hover:bg-muted"
+        >
+          −
+        </button>
+        <button
+          onClick={handleReset}
+          className="bg-background/90 dark:bg-card/90 border border-border rounded px-2 py-1 text-xs hover:bg-muted"
+        >
+          Reset
+        </button>
+      </div>
 
       {/* Legend */}
       <div className="absolute bottom-2 left-2 bg-background/90 dark:bg-card/90 border border-border rounded p-2 text-xs space-y-1">
