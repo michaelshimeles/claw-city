@@ -624,19 +624,33 @@ export const executeAgentAction = internalMutation({
       args.actionArgs ?? {}
     );
 
-    // Create journal entry
-    await ctx.db.insert("journals", {
-      agentId: agent._id,
-      tick: world.tick,
-      timestamp: Date.now(),
-      action: args.action,
-      actionArgs: args.actionArgs,
-      result: actionResult.ok
-        ? { success: true, data: actionResult.result }
-        : { success: false, error: actionResult.error, message: actionResult.message },
-      reflection: args.reflection,
-      mood: args.mood,
-    });
+    // Check for duplicate journal entry (same agent, same reflection within 2 minutes)
+    const recentJournals = await ctx.db
+      .query("journals")
+      .withIndex("by_agentId", (q) => q.eq("agentId", agent._id))
+      .order("desc")
+      .take(5);
+
+    const twoMinutesAgo = Date.now() - 2 * 60 * 1000;
+    const isDuplicate = recentJournals.some(
+      (j) => j.timestamp > twoMinutesAgo && j.reflection === args.reflection
+    );
+
+    // Only create journal entry if it's not a duplicate
+    if (!isDuplicate) {
+      await ctx.db.insert("journals", {
+        agentId: agent._id,
+        tick: world.tick,
+        timestamp: Date.now(),
+        action: args.action,
+        actionArgs: args.actionArgs,
+        result: actionResult.ok
+          ? { success: true, data: actionResult.result }
+          : { success: false, error: actionResult.error, message: actionResult.message },
+        reflection: args.reflection,
+        mood: args.mood,
+      });
+    }
 
     // Get updated agent state for response
     const updatedAgent = await ctx.db.get(agent._id);
