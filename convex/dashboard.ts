@@ -389,7 +389,7 @@ function formatEventDescription(
 export const getWorldStats = query({
   args: {},
   handler: async (ctx) => {
-    const [world, agents, gangs, territories, coopActions] = await Promise.all([
+    const [world, agents, gangs, territories, coopActions, government] = await Promise.all([
       ctx.db.query("world").first(),
       ctx.db.query("agents").collect(),
       ctx.db.query("gangs").collect(),
@@ -398,6 +398,7 @@ export const getWorldStats = query({
         .query("coopActions")
         .withIndex("by_status", (q) => q.eq("status", "recruiting"))
         .collect(),
+      ctx.db.query("government").first(),
     ]);
 
     const currentTick = world?.tick ?? 0;
@@ -472,9 +473,8 @@ export const getWorldStats = query({
       return sum + (payload?.amount ?? 0);
     }, 0);
 
-    // For total tax collected, use the sum of agents' lifetimeEarnings as proxy
-    // or track in world state - avoid scanning all events
-    const totalTaxCollected = taxCollected24h; // Just show 24h for now
+    // Get total tax collected from government table
+    const totalTaxCollected = government?.totalTaxRevenue ?? 0;
 
     // Count agents with pending taxes
     const agentsWithTaxDue = agents.filter(
