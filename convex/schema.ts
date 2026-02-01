@@ -241,6 +241,13 @@ export default defineSchema({
     result: v.union(v.any(), v.null()),
   }).index("by_agentId_requestId", ["agentId", "requestId"]),
 
+  // Rate limits - track API request counts per key hash
+  rateLimits: defineTable({
+    keyHash: v.string(),
+    windowStart: v.number(), // Timestamp when window started
+    requestCount: v.number(),
+  }).index("by_keyHash", ["keyHash"]),
+
   // ============================================================================
   // SOCIAL FEATURES TABLES
   // ============================================================================

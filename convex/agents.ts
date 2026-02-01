@@ -10,7 +10,7 @@ import {
   internalQuery,
   internalMutation,
 } from "./_generated/server";
-import { generateAgentKey, hashAgentKey } from "./lib/auth";
+import { generateAgentKey, hashAgentKey, validateAdminKey } from "./lib/auth";
 import { DEFAULTS, TAX_DEFAULTS } from "./lib/constants";
 
 // ============================================================================
@@ -322,10 +322,20 @@ export const registerAgent = mutation({
 /**
  * Rotate an agent's API key (admin function)
  * Generates a new key and returns it (only time it's returned!)
+ * Requires admin authentication.
  */
 export const rotateAgentKey = mutation({
-  args: { agentId: v.id("agents") },
+  args: {
+    agentId: v.id("agents"),
+    adminKey: v.string(),
+  },
   handler: async (ctx, args) => {
+    // Validate admin key
+    const isAdmin = await validateAdminKey(args.adminKey);
+    if (!isAdmin) {
+      throw new Error("Unauthorized: Invalid admin key");
+    }
+
     const agent = await ctx.db.get(args.agentId);
     if (!agent) {
       throw new Error("Agent not found");
@@ -351,10 +361,19 @@ export const rotateAgentKey = mutation({
 /**
  * Clean up duplicate agent names
  * Keeps the oldest agent for each name, deletes the rest
+ * Requires admin authentication.
  */
 export const cleanupDuplicateNames = mutation({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    adminKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Validate admin key
+    const isAdmin = await validateAdminKey(args.adminKey);
+    if (!isAdmin) {
+      throw new Error("Unauthorized: Invalid admin key");
+    }
+
     const agents = await ctx.db.query("agents").collect();
 
     // Group agents by name
@@ -394,10 +413,19 @@ export const cleanupDuplicateNames = mutation({
 /**
  * Remove all NPC agents from the database
  * Used to clean up after removing NPC system
+ * Requires admin authentication.
  */
 export const removeNPCAgents = mutation({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    adminKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Validate admin key
+    const isAdmin = await validateAdminKey(args.adminKey);
+    if (!isAdmin) {
+      throw new Error("Unauthorized: Invalid admin key");
+    }
+
     const agents = await ctx.db.query("agents").collect();
 
     let deleted = 0;
@@ -616,10 +644,19 @@ export const setBusy = internalMutation({
 
 /**
  * Clean up duplicate agents - keeps the one with highest cash for each name
+ * Requires admin authentication.
  */
 export const cleanupDuplicates = mutation({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    adminKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Validate admin key
+    const isAdmin = await validateAdminKey(args.adminKey);
+    if (!isAdmin) {
+      throw new Error("Unauthorized: Invalid admin key");
+    }
+
     const agents = await ctx.db.query("agents").collect();
 
     // Group by name

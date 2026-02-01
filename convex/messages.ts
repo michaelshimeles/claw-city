@@ -276,17 +276,36 @@ export const getUnreadCount = query({
 
 /**
  * Mark message(s) as read
+ * Only marks messages where the caller is the recipient (security check)
  */
 export const markAsRead = mutation({
   args: {
+    agentId: v.id("agents"),
     messageIds: v.array(v.id("messages")),
   },
   handler: async (ctx, args) => {
+    // Verify the agent exists
+    const agent = await ctx.db.get(args.agentId);
+    if (!agent) {
+      throw new Error("Agent not found");
+    }
+
     let markedCount = 0;
+    let skippedCount = 0;
 
     for (const messageId of args.messageIds) {
       const message = await ctx.db.get(messageId);
-      if (message && !message.read) {
+      if (!message) {
+        continue;
+      }
+
+      // Security check: Only allow marking messages where caller is the recipient
+      if (message.recipientId.toString() !== args.agentId.toString()) {
+        skippedCount++;
+        continue;
+      }
+
+      if (!message.read) {
         await ctx.db.patch(messageId, { read: true });
         markedCount++;
       }
@@ -294,6 +313,7 @@ export const markAsRead = mutation({
 
     return {
       markedCount,
+      skippedCount,
     };
   },
 });

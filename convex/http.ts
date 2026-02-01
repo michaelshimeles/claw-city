@@ -38,6 +38,67 @@ import { handleAction } from "./actions";
 const http = httpRouter();
 
 // ============================================================================
+// RATE LIMITING
+// ============================================================================
+
+const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute window
+const RATE_LIMIT_MAX_REQUESTS = 100; // 100 requests per window
+
+/**
+ * Check and update rate limit for an API key
+ * Returns true if request should be allowed, false if rate limited
+ */
+export const checkRateLimit = internalMutation({
+  args: { keyHash: v.string() },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const windowStart = now - RATE_LIMIT_WINDOW_MS;
+
+    // Get existing rate limit record
+    const existing = await ctx.db
+      .query("rateLimits")
+      .withIndex("by_keyHash", (q) => q.eq("keyHash", args.keyHash))
+      .first();
+
+    if (!existing) {
+      // First request - create new record
+      await ctx.db.insert("rateLimits", {
+        keyHash: args.keyHash,
+        windowStart: now,
+        requestCount: 1,
+      });
+      return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS - 1 };
+    }
+
+    // Check if window has expired
+    if (existing.windowStart < windowStart) {
+      // Reset window
+      await ctx.db.patch(existing._id, {
+        windowStart: now,
+        requestCount: 1,
+      });
+      return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS - 1 };
+    }
+
+    // Check if limit exceeded
+    if (existing.requestCount >= RATE_LIMIT_MAX_REQUESTS) {
+      return {
+        allowed: false,
+        remaining: 0,
+        retryAfter: Math.ceil((existing.windowStart + RATE_LIMIT_WINDOW_MS - now) / 1000),
+      };
+    }
+
+    // Increment count
+    await ctx.db.patch(existing._id, {
+      requestCount: existing.requestCount + 1,
+    });
+
+    return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS - existing.requestCount - 1 };
+  },
+});
+
+// ============================================================================
 // INTERNAL QUERIES AND MUTATIONS
 // ============================================================================
 
@@ -729,6 +790,27 @@ http.route({
     // Hash the token for lookup
     const keyHash = await hashAgentKey(token);
 
+    // Check rate limit
+    const rateLimit = await ctx.runMutation(internal.http.checkRateLimit, { keyHash });
+    if (!rateLimit.allowed) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: "RATE_LIMIT_EXCEEDED",
+          message: `Rate limit exceeded. Try again in ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter,
+        }),
+        {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Retry-After": String(rateLimit.retryAfter),
+          },
+        }
+      );
+    }
+
     // Get agent state
     const result = await ctx.runQuery(internal.http.getAgentStateByKeyHash, {
       keyHash,
@@ -853,6 +935,27 @@ http.route({
     // Hash the token for lookup
     const keyHash = await hashAgentKey(token);
 
+    // Check rate limit
+    const rateLimit = await ctx.runMutation(internal.http.checkRateLimit, { keyHash });
+    if (!rateLimit.allowed) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: "RATE_LIMIT_EXCEEDED",
+          message: `Rate limit exceeded. Try again in ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter,
+        }),
+        {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Retry-After": String(rateLimit.retryAfter),
+          },
+        }
+      );
+    }
+
     // Parse query parameters
     const url = new URL(request.url);
     const sinceTick = parseInt(url.searchParams.get("sinceTick") ?? "0", 10);
@@ -910,6 +1013,27 @@ http.route({
     // Hash the token for lookup
     const keyHash = await hashAgentKey(token);
 
+    // Check rate limit
+    const rateLimit = await ctx.runMutation(internal.http.checkRateLimit, { keyHash });
+    if (!rateLimit.allowed) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: "RATE_LIMIT_EXCEEDED",
+          message: `Rate limit exceeded. Try again in ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter,
+        }),
+        {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Retry-After": String(rateLimit.retryAfter),
+          },
+        }
+      );
+    }
+
     // Parse query parameters
     const url = new URL(request.url);
     const withAgentId = url.searchParams.get("with");
@@ -954,6 +1078,27 @@ http.route({
 
     // Hash the token for lookup
     const keyHash = await hashAgentKey(token);
+
+    // Check rate limit
+    const rateLimit = await ctx.runMutation(internal.http.checkRateLimit, { keyHash });
+    if (!rateLimit.allowed) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: "RATE_LIMIT_EXCEEDED",
+          message: `Rate limit exceeded. Try again in ${rateLimit.retryAfter} seconds.`,
+          retryAfter: rateLimit.retryAfter,
+        }),
+        {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Retry-After": String(rateLimit.retryAfter),
+          },
+        }
+      );
+    }
 
     // Parse request body
     let body: {
