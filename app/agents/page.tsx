@@ -162,7 +162,7 @@ export default function AgentsPage() {
                   setStatusFilter((value ?? "all") as AgentStatus | "all")
                 }
               >
-                <SelectTrigger className="w-[160px]">
+                <SelectTrigger className="w-full sm:w-[160px]">
                   <SelectValue placeholder="Filter by status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -179,7 +179,7 @@ export default function AgentsPage() {
                 value={zoneFilter}
                 onValueChange={(value: string | null) => setZoneFilter(value ?? "all")}
               >
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger className="w-full sm:w-[180px]">
                   <SelectValue placeholder="Filter by zone" />
                 </SelectTrigger>
                 <SelectContent>
@@ -239,31 +239,31 @@ export default function AgentsPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-border border-b">
-                      <th className="text-muted-foreground px-4 py-3 text-left font-medium">
+                      <th className="text-muted-foreground px-2 sm:px-4 py-3 text-left font-medium">
                         Name
                       </th>
-                      <th className="text-muted-foreground px-4 py-3 text-left font-medium">
+                      <th className="text-muted-foreground px-2 sm:px-4 py-3 text-left font-medium">
                         Status
                       </th>
-                      <th className="text-muted-foreground px-4 py-3 text-left font-medium">
+                      <th className="text-muted-foreground px-2 sm:px-4 py-3 text-left font-medium hidden sm:table-cell">
                         Location
                       </th>
-                      <th className="text-muted-foreground px-4 py-3 text-right font-medium">
+                      <th className="text-muted-foreground px-2 sm:px-4 py-3 text-right font-medium">
                         Cash
                       </th>
-                      <th className="text-muted-foreground px-4 py-3 text-left font-medium">
+                      <th className="text-muted-foreground px-2 sm:px-4 py-3 text-left font-medium hidden md:table-cell">
                         Health/Stamina
                       </th>
-                      <th className="text-muted-foreground px-4 py-3 text-left font-medium">
+                      <th className="text-muted-foreground px-2 sm:px-4 py-3 text-left font-medium hidden lg:table-cell">
                         Heat
                       </th>
-                      <th className="text-muted-foreground px-4 py-3 text-center font-medium">
+                      <th className="text-muted-foreground px-2 sm:px-4 py-3 text-center font-medium hidden lg:table-cell">
                         Rep
                       </th>
-                      <th className="text-muted-foreground px-4 py-3 text-center font-medium">
+                      <th className="text-muted-foreground px-2 sm:px-4 py-3 text-center font-medium hidden xl:table-cell">
                         Skills
                       </th>
-                      <th className="text-muted-foreground px-4 py-3 text-right font-medium">
+                      <th className="text-muted-foreground px-2 sm:px-4 py-3 text-right font-medium">
                         Actions
                       </th>
                     </tr>
@@ -277,12 +277,12 @@ export default function AgentsPage() {
                           key={agent._id}
                           className="border-border hover:bg-muted/50 border-b transition-colors last:border-0 relative"
                         >
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
+                          <td className="px-2 sm:px-4 py-3">
+                            <div className="flex items-center gap-1 sm:gap-2">
                               {gang && (
                                 <Badge
                                   variant="outline"
-                                  className="text-xs"
+                                  className="text-[10px] sm:text-xs"
                                   style={{
                                     borderColor: gang.color,
                                     color: gang.color,
@@ -291,28 +291,28 @@ export default function AgentsPage() {
                                   [{gang.tag}]
                                 </Badge>
                               )}
-                              <span className="font-medium">{agent.name}</span>
+                              <span className="font-medium text-sm sm:text-base truncate max-w-[80px] sm:max-w-none">{agent.name}</span>
                             </div>
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-2 sm:px-4 py-3">
                             <div className="flex flex-col gap-1">
-                              <Badge variant={getStatusBadgeVariant(agent.status)}>
+                              <Badge variant={getStatusBadgeVariant(agent.status)} className="text-[10px] sm:text-xs">
                                 {agent.status}
                               </Badge>
                               {agent.status === "busy" && agent.busyAction && (
-                                <span className="text-xs text-muted-foreground truncate max-w-[100px]">
+                                <span className="text-[10px] sm:text-xs text-muted-foreground truncate max-w-[60px] sm:max-w-[100px]">
                                   {agent.busyAction}
                                 </span>
                               )}
                             </div>
                           </td>
-                          <td className="text-muted-foreground px-4 py-3">
+                          <td className="text-muted-foreground px-2 sm:px-4 py-3 hidden sm:table-cell">
                             {zoneMap.get(agent.locationZoneId) || "Unknown"}
                           </td>
-                          <td className="px-4 py-3 text-right font-mono">
+                          <td className="px-2 sm:px-4 py-3 text-right font-mono text-xs sm:text-sm">
                             ${agent.cash.toLocaleString()}
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-2 sm:px-4 py-3 hidden md:table-cell">
                             <div className="space-y-1">
                               {/* Health bar */}
                               <div className="flex items-center gap-2">
@@ -344,7 +344,7 @@ export default function AgentsPage() {
                               </div>
                             </div>
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-2 sm:px-4 py-3 hidden lg:table-cell">
                             <div className="flex items-center gap-2">
                               <div
                                 className={`size-2.5 rounded-full ${getHeatColor(agent.heat)}`}
@@ -356,22 +356,22 @@ export default function AgentsPage() {
                               </span>
                             </div>
                           </td>
-                          <td className="px-4 py-3 text-center">
+                          <td className="px-2 sm:px-4 py-3 text-center hidden lg:table-cell">
                             <div className="flex items-center justify-center gap-1">
                               <StarIcon className="size-3 text-purple-500" />
                               <span className="text-sm">{agent.reputation}</span>
                             </div>
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-2 sm:px-4 py-3 hidden xl:table-cell">
                             <div className="flex justify-center">
                               <SkillBars skills={agent.skills} />
                             </div>
                           </td>
-                          <td className="px-4 py-3 text-right">
+                          <td className="px-2 sm:px-4 py-3 text-right">
                             <div className="flex items-center justify-end gap-1">
                               {/* Inventory indicator */}
                               {agent.inventory.length > 0 && (
-                                <div className="relative group">
+                                <div className="relative group hidden sm:block">
                                   <PackageIcon className="size-4 text-muted-foreground" />
                                   <span className="absolute -top-1 -right-1 text-[10px] bg-primary text-primary-foreground rounded-full size-3.5 flex items-center justify-center">
                                     {agent.inventory.reduce((sum, i) => sum + i.qty, 0)}
@@ -379,9 +379,9 @@ export default function AgentsPage() {
                                 </div>
                               )}
                               <Link href={`/agents/${agent._id}`}>
-                                <Button variant="ghost" size="sm">
-                                  <EyeIcon className="mr-1 size-3.5" />
-                                  View
+                                <Button variant="ghost" size="sm" className="px-2 sm:px-3">
+                                  <EyeIcon className="size-3.5 sm:mr-1" />
+                                  <span className="hidden sm:inline">View</span>
                                 </Button>
                               </Link>
                             </div>

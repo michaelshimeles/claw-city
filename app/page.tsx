@@ -187,7 +187,7 @@ export default function DashboardPage() {
 
         {/* Quick Stats Row */}
         {worldStats && (
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2 sm:gap-4">
             <Card>
               <CardContent className="pt-4 text-center">
                 <DollarSignIcon className="mx-auto size-5 text-green-500 mb-1" />
@@ -339,7 +339,7 @@ export default function DashboardPage() {
 
         {/* Mini Leaderboards */}
         {allLeaderboards && (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-4">
             <Card className="hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => window.location.href = "/leaderboards"}>
               <CardContent className="pt-4">
                 <div className="flex items-center gap-2 text-green-500 mb-2">

@@ -116,7 +116,7 @@ export const SpectateToaster = memo(function SpectateToaster() {
   }
 
   return (
-    <div className="fixed bottom-4 left-4 z-50 flex flex-col gap-2 pointer-events-none">
+    <div className="fixed bottom-20 sm:bottom-4 left-2 sm:left-4 z-50 flex flex-col gap-2 pointer-events-none max-w-[calc(100vw-1rem)] sm:max-w-sm">
       {toasts.map((toast) => (
         <div
           key={toast.id}

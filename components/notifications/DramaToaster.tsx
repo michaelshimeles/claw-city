@@ -100,7 +100,7 @@ export const DramaToaster = memo(function DramaToaster() {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
+    <div className="fixed bottom-4 right-2 sm:right-4 z-50 flex flex-col gap-2 pointer-events-none max-w-[calc(100vw-1rem)] sm:max-w-sm">
       {toasts.map((toast) => (
         <div
           key={toast.id}

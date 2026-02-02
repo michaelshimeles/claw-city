@@ -33,7 +33,7 @@ export function GlobalTicker() {
   return (
     <div className="w-full bg-black/80 border-b border-border/50 overflow-hidden">
       <div className="relative flex">
-        <div className="flex animate-ticker gap-8 py-1.5 px-4">
+        <div className="flex animate-ticker gap-4 sm:gap-8 py-1 sm:py-1.5 px-2 sm:px-4">
           {duplicatedEvents.map((event, index) => (
             <div
               key={`${event._id}-${index}`}

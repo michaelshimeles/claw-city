@@ -101,47 +101,49 @@ export default function AgentDetailPage() {
     <div className="min-h-screen bg-background px-4 py-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-center gap-4">
-          <Link href="/agents">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+          <Link href="/agents" className="self-start">
             <Button variant="ghost" size="sm">
               <ArrowLeftIcon className="size-4" />
             </Button>
           </Link>
-          <div className="flex-1">
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold">{profile.name}</h1>
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+              <h1 className="text-xl sm:text-2xl font-bold truncate">{profile.name}</h1>
               <Badge
-                className={`${getTitleColor(profile.title.priority)}`}
+                className={`${getTitleColor(profile.title.priority)} text-xs`}
                 variant="outline"
               >
                 {profile.title.title}
               </Badge>
-              <Badge variant={getStatusBadgeVariant(profile.status)}>
+              <Badge variant={getStatusBadgeVariant(profile.status)} className="text-xs">
                 {profile.status}
               </Badge>
             </div>
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="text-xs sm:text-sm text-muted-foreground mt-1 truncate">
               {profile.title.description}
             </p>
           </div>
           {profile.gang && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 text-sm">
               <div
-                className="size-4 rounded"
+                className="size-3 sm:size-4 rounded"
                 style={{ backgroundColor: profile.gang.color }}
               />
               <span className="font-medium">[{profile.gang.tag}]</span>
-              <span className="text-muted-foreground">{profile.gang.name}</span>
-              <Badge variant="outline">{profile.gang.role}</Badge>
+              <span className="text-muted-foreground hidden sm:inline">{profile.gang.name}</span>
+              <Badge variant="outline" className="text-xs">{profile.gang.role}</Badge>
             </div>
           )}
-          <FollowButton agentId={agentId} agentName={profile.name} size="sm" />
-          <Link href={`/messages?selected=${agentId}`}>
-            <Button variant="outline" size="sm">
-              <MessageSquareIcon className="size-4 mr-2" />
-              Message
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            <FollowButton agentId={agentId} agentName={profile.name} size="sm" />
+            <Link href={`/messages?selected=${agentId}`}>
+              <Button variant="outline" size="sm" className="px-2 sm:px-3">
+                <MessageSquareIcon className="size-4 sm:mr-2" />
+                <span className="hidden sm:inline">Message</span>
+              </Button>
+            </Link>
+          </div>
         </div>
 
         {/* Busy Action Alert */}
@@ -158,11 +160,12 @@ export default function AgentDetailPage() {
         )}
 
         {/* Tab Navigation */}
-        <div className="flex gap-2 border-b border-border pb-2">
+        <div className="flex gap-1 sm:gap-2 border-b border-border pb-2 overflow-x-auto">
           <Button
             variant={activeTab === "overview" ? "default" : "ghost"}
             size="sm"
             onClick={() => setActiveTab("overview")}
+            className="text-xs sm:text-sm whitespace-nowrap"
           >
             Overview
           </Button>
@@ -170,6 +173,7 @@ export default function AgentDetailPage() {
             variant={activeTab === "timeline" ? "default" : "ghost"}
             size="sm"
             onClick={() => setActiveTab("timeline")}
+            className="text-xs sm:text-sm whitespace-nowrap"
           >
             Timeline
           </Button>
@@ -177,6 +181,7 @@ export default function AgentDetailPage() {
             variant={activeTab === "rapsheet" ? "default" : "ghost"}
             size="sm"
             onClick={() => setActiveTab("rapsheet")}
+            className="text-xs sm:text-sm whitespace-nowrap"
           >
             Rap Sheet
           </Button>
@@ -193,7 +198,7 @@ export default function AgentDetailPage() {
         {activeTab === "overview" && (
           <>
             {/* Stats Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-4">
               <Card>
                 <CardContent className="pt-4">
                   <div className="flex items-center gap-2 text-muted-foreground mb-1">
