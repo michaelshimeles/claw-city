@@ -10,7 +10,6 @@ import { mutation, query } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 
 const DATA_PREVIEW_SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
-const REDACTION_PREVIEW_MAX = 120;
 
 const TRUST_EVENT_TYPES = [
   "GANG_BETRAYED",
@@ -50,40 +49,13 @@ function agentAlias(agentId?: string | null): string {
   return `agent_${agentId.toString().slice(-6)}`;
 }
 
-function redactText(text: string) {
-  const trimmed = text.trim();
-  const length = trimmed.length;
-  const wordCount = trimmed ? trimmed.split(/\s+/).length : 0;
-  const sentenceCount = trimmed ? trimmed.split(/[.!?]+/).filter(Boolean).length : 0;
-  const previewShape = trimmed
-    .slice(0, REDACTION_PREVIEW_MAX)
-    .replace(/[A-Za-z0-9]/g, "•");
-
-  return {
-    redacted: true as const,
-    previewShape,
-    length,
-    wordCount,
-    sentenceCount,
-    tokenEstimate: Math.ceil(length / 4),
-  };
+// Show full text without redaction
+function showText(text: string) {
+  return text;
 }
 
-function redactDeep(value: unknown): unknown {
-  if (typeof value === "string") {
-    return redactText(value);
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => redactDeep(item));
-  }
-  if (value && typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>);
-    const redacted: Record<string, unknown> = {};
-    for (const [key, entryValue] of entries) {
-      redacted[key] = redactDeep(entryValue);
-    }
-    return redacted;
-  }
+// Return data as-is without redaction
+function showDeep(value: unknown): unknown {
   return value;
 }
 
@@ -296,9 +268,9 @@ export const getSampleDecisionLogs = query({
         tick: journal.tick,
         agentAlias: agentAlias(agent._id.toString()),
         action: journal.action,
-        actionArgs: redactDeep(journal.actionArgs),
-        result: redactDeep(journal.result),
-        reflection: redactText(journal.reflection),
+        actionArgs: showDeep(journal.actionArgs),
+        result: showDeep(journal.result),
+        reflection: showText(journal.reflection),
         mood: journal.mood,
         agentState: {
           cash: agent.cash,
@@ -343,7 +315,7 @@ export const getSampleNegotiations = query({
         messages: Array<{
           senderId: string;
           recipientId: string;
-          content: ReturnType<typeof redactText>;
+          content: string;
           tick: number;
           timestamp: number;
         }>;
@@ -365,7 +337,7 @@ export const getSampleNegotiations = query({
       conversations.get(key)!.messages.push({
         senderId: msg.senderId.toString(),
         recipientId: msg.recipientId.toString(),
-        content: redactText(msg.content),
+        content: showText(msg.content),
         tick: msg.tick,
         timestamp: msg.timestamp,
       });
@@ -423,7 +395,7 @@ export const getSampleTrustEvents = query({
         timestamp: event.timestamp,
         agentAlias: agentAliasName,
         targetAlias,
-        payload: redactDeep(event.payload),
+        payload: showDeep(event.payload),
       });
     }
 
@@ -487,7 +459,7 @@ export const getSampleEconomicData = query({
           recentEconomicActivity: economicEvents.map((e) => ({
             type: e.type,
             tick: e.tick,
-            payload: redactDeep(e.payload),
+            payload: showDeep(e.payload),
           })),
         };
       })
@@ -527,10 +499,10 @@ export const getSampleReasoningChains = query({
         return {
           agentAlias: agentAlias(journal.agentId.toString()),
           action: journal.action,
-          actionArgs: redactDeep(journal.actionArgs),
-          reasoning: redactText(journal.reflection),
+          actionArgs: showDeep(journal.actionArgs),
+          reasoning: showText(journal.reflection),
           mood: journal.mood,
-          outcome: redactDeep(journal.result),
+          outcome: showDeep(journal.result),
           context: {
             tick: journal.tick,
             agentStats: agent

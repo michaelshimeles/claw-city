@@ -24,11 +24,23 @@ import {
   LockIcon,
   CopyIcon,
   CheckIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
 } from "lucide-react";
 
 const DATA_PREVIEW_TOKEN_KEY = "data-preview-token";
+
+type DatasetTab = "decisions" | "negotiations" | "trust" | "economic" | "reasoning";
+
+const DATASET_TABS: {
+  key: DatasetTab;
+  label: string;
+  icon: React.ElementType;
+}[] = [
+  { key: "decisions", label: "Decision Logs", icon: DatabaseIcon },
+  { key: "negotiations", label: "Negotiations", icon: MessageSquareIcon },
+  { key: "trust", label: "Trust Events", icon: HeartHandshakeIcon },
+  { key: "economic", label: "Economic Data", icon: TrendingUpIcon },
+  { key: "reasoning", label: "Reasoning Chains", icon: BrainIcon },
+];
 
 function PasswordGate({ onAuthenticated }: { onAuthenticated: (token: string) => void }) {
   const [password, setPassword] = useState("");
@@ -94,9 +106,8 @@ function PasswordGate({ onAuthenticated }: { onAuthenticated: (token: string) =>
   );
 }
 
-function SampleViewer({ data, maxHeight = "200px" }: { data: unknown; maxHeight?: string }) {
+function SampleViewer({ data }: { data: unknown }) {
   const [copied, setCopied] = useState(false);
-  const [expanded, setExpanded] = useState(false);
 
   const jsonString = JSON.stringify(data, null, 2);
 
@@ -107,18 +118,9 @@ function SampleViewer({ data, maxHeight = "200px" }: { data: unknown; maxHeight?
   };
 
   return (
-    <div className="relative group rounded-md overflow-hidden border border-border bg-muted/30">
-      <div className="flex items-center justify-end gap-2 px-2 py-1 border-b border-border bg-muted/50">
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {expanded ? (
-            <ChevronUpIcon className="w-4 h-4" />
-          ) : (
-            <ChevronDownIcon className="w-4 h-4" />
-          )}
-        </button>
+    <div className="relative rounded-md overflow-hidden border border-border bg-muted/30">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/50">
+        <span className="text-xs text-muted-foreground">Sample Record</span>
         <button
           onClick={handleCopy}
           className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
@@ -130,86 +132,12 @@ function SampleViewer({ data, maxHeight = "200px" }: { data: unknown; maxHeight?
           )}
         </button>
       </div>
-      <div
-        className="overflow-auto transition-all duration-300"
-        style={{ maxHeight: expanded ? "500px" : maxHeight }}
-      >
-        <pre className="p-3 text-xs font-mono text-muted-foreground whitespace-pre-wrap break-words">
+      <div className="overflow-auto max-h-[600px]">
+        <pre className="p-4 text-sm font-mono text-foreground whitespace-pre-wrap break-words">
           <code>{jsonString}</code>
         </pre>
       </div>
     </div>
-  );
-}
-
-function DatasetCard({
-  name,
-  description,
-  recordCount,
-  samples,
-  icon: Icon,
-}: {
-  name: string;
-  description: string;
-  recordCount: number | string;
-  samples: unknown[];
-  icon: React.ElementType;
-}) {
-  const [selectedSample, setSelectedSample] = useState(0);
-
-  const formatRecordCount = (count: number | string) => {
-    if (typeof count === "string") return count;
-    if (count >= 1000000) return (count / 1000000).toFixed(1) + "M";
-    if (count >= 1000) return (count / 1000).toFixed(1) + "K";
-    return count.toLocaleString();
-  };
-
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-md bg-primary/10">
-              <Icon className="w-4 h-4 text-primary" />
-            </div>
-            <div>
-              <CardTitle className="text-sm">{name}</CardTitle>
-              <CardDescription className="text-xs">
-                {formatRecordCount(recordCount)} records
-              </CardDescription>
-            </div>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-xs text-muted-foreground">{description}</p>
-
-        {samples.length > 0 && (
-          <>
-            <div className="flex gap-1 flex-wrap">
-              {samples.slice(0, 10).map((_, index) => (
-                <button
-                  key={index}
-                  onClick={() => setSelectedSample(index)}
-                  className={`w-2 h-2 rounded-full transition-colors ${
-                    selectedSample === index
-                      ? "bg-primary"
-                      : "bg-muted-foreground/30 hover:bg-muted-foreground/50"
-                  }`}
-                />
-              ))}
-            </div>
-            <SampleViewer data={samples[selectedSample]} maxHeight="200px" />
-          </>
-        )}
-
-        {samples.length === 0 && (
-          <div className="text-xs text-muted-foreground italic py-4 text-center">
-            No samples available yet
-          </div>
-        )}
-      </CardContent>
-    </Card>
   );
 }
 
@@ -301,14 +229,73 @@ function LLMDistributionCard({
   );
 }
 
+function DatasetPanel({
+  datasetName,
+  description,
+  recordCount,
+  samples,
+}: {
+  datasetName: string;
+  description: string;
+  recordCount: number | string;
+  samples: unknown[];
+}) {
+  const [selectedSample, setSelectedSample] = useState(0);
+
+  const formatRecordCount = (count: number | string) => {
+    if (typeof count === "string") return count;
+    if (count >= 1000000) return (count / 1000000).toFixed(1) + "M";
+    if (count >= 1000) return (count / 1000).toFixed(1) + "K";
+    return count.toLocaleString();
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start justify-between">
+        <div>
+          <h3 className="text-lg font-semibold">{datasetName}</h3>
+          <p className="text-sm text-muted-foreground">{description}</p>
+        </div>
+        <Badge variant="outline" className="text-sm">
+          {formatRecordCount(recordCount)} records
+        </Badge>
+      </div>
+
+      {samples.length > 0 ? (
+        <>
+          <div className="flex gap-2 flex-wrap">
+            {samples.map((_, index) => (
+              <Button
+                key={index}
+                variant={selectedSample === index ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSelectedSample(index)}
+              >
+                Sample {index + 1}
+              </Button>
+            ))}
+          </div>
+          <SampleViewer data={samples[selectedSample]} />
+        </>
+      ) : (
+        <div className="text-sm text-muted-foreground italic py-8 text-center border border-dashed rounded-md">
+          No samples available yet
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DataPreviewDashboard({ sessionToken }: { sessionToken: string }) {
+  const [activeTab, setActiveTab] = useState<DatasetTab>("decisions");
+
   const stats = useQuery(api.dataPreview.getDatasetStats, { sessionToken });
   const llmDistribution = useQuery(api.dataPreview.getLLMDistribution, { sessionToken });
-  const decisionLogs = useQuery(api.dataPreview.getSampleDecisionLogs, { sessionToken, limit: 5 });
-  const negotiations = useQuery(api.dataPreview.getSampleNegotiations, { sessionToken, limit: 5 });
-  const trustEvents = useQuery(api.dataPreview.getSampleTrustEvents, { sessionToken, limit: 5 });
-  const economicData = useQuery(api.dataPreview.getSampleEconomicData, { sessionToken, limit: 5 });
-  const reasoningChains = useQuery(api.dataPreview.getSampleReasoningChains, { sessionToken, limit: 5 });
+  const decisionLogs = useQuery(api.dataPreview.getSampleDecisionLogs, { sessionToken, limit: 10 });
+  const negotiations = useQuery(api.dataPreview.getSampleNegotiations, { sessionToken, limit: 10 });
+  const trustEvents = useQuery(api.dataPreview.getSampleTrustEvents, { sessionToken, limit: 10 });
+  const economicData = useQuery(api.dataPreview.getSampleEconomicData, { sessionToken, limit: 10 });
+  const reasoningChains = useQuery(api.dataPreview.getSampleReasoningChains, { sessionToken, limit: 10 });
 
   if (!stats || !llmDistribution) {
     return (
@@ -320,6 +307,23 @@ function DataPreviewDashboard({ sessionToken }: { sessionToken: string }) {
       </div>
     );
   }
+
+  const getActiveDataset = () => {
+    switch (activeTab) {
+      case "decisions":
+        return decisionLogs;
+      case "negotiations":
+        return negotiations;
+      case "trust":
+        return trustEvents;
+      case "economic":
+        return economicData;
+      case "reasoning":
+        return reasoningChains;
+    }
+  };
+
+  const activeDataset = getActiveDataset();
 
   return (
     <div className="min-h-screen bg-background px-4 py-6">
@@ -363,56 +367,45 @@ function DataPreviewDashboard({ sessionToken }: { sessionToken: string }) {
           />
         </div>
 
-        {/* Dataset Cards */}
+        {/* Dataset Tabs */}
         <div>
           <h2 className="text-lg font-semibold mb-4">Available Datasets</h2>
-          <div className="grid md:grid-cols-2 gap-4">
-            {decisionLogs && (
-              <DatasetCard
-                name={decisionLogs.datasetName}
-                description={decisionLogs.description}
-                recordCount={decisionLogs.recordCount}
-                samples={decisionLogs.samples}
-                icon={DatabaseIcon}
-              />
-            )}
-            {negotiations && (
-              <DatasetCard
-                name={negotiations.datasetName}
-                description={negotiations.description}
-                recordCount={negotiations.recordCount}
-                samples={negotiations.samples}
-                icon={MessageSquareIcon}
-              />
-            )}
-            {trustEvents && (
-              <DatasetCard
-                name={trustEvents.datasetName}
-                description={trustEvents.description}
-                recordCount={trustEvents.recordCount}
-                samples={trustEvents.samples}
-                icon={HeartHandshakeIcon}
-              />
-            )}
-            {economicData && (
-              <DatasetCard
-                name={economicData.datasetName}
-                description={economicData.description}
-                recordCount={economicData.recordCount}
-                samples={economicData.samples}
-                icon={TrendingUpIcon}
-              />
-            )}
-            {reasoningChains && (
-              <DatasetCard
-                name={reasoningChains.datasetName}
-                description={reasoningChains.description}
-                recordCount={reasoningChains.recordCount}
-                samples={reasoningChains.samples}
-                icon={BrainIcon}
-              />
-            )}
+
+          {/* Tab Navigation */}
+          <div className="flex gap-2 flex-wrap mb-6">
+            {DATASET_TABS.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <Button
+                  key={tab.key}
+                  variant={activeTab === tab.key ? "default" : "outline"}
+                  onClick={() => setActiveTab(tab.key)}
+                  className="gap-2"
+                >
+                  <Icon className="w-4 h-4" />
+                  {tab.label}
+                </Button>
+              );
+            })}
           </div>
+
+          {/* Active Dataset Content */}
+          <Card>
+            <CardContent className="pt-6">
+              {activeDataset ? (
+                <DatasetPanel
+                  datasetName={activeDataset.datasetName}
+                  description={activeDataset.description}
+                  recordCount={activeDataset.recordCount}
+                  samples={activeDataset.samples}
+                />
+              ) : (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2Icon className="w-6 h-6 text-primary animate-spin" />
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
         {/* LLM Distribution */}
