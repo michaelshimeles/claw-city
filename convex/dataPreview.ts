@@ -2,7 +2,7 @@
  * Data Preview Queries for ClawCity Data Monetization
  * Provides sample data and statistics for the data preview dashboard
  *
- * Note: Uses efficient queries with limits to avoid hitting document read limits
+ * Note: Uses very small samples to avoid hitting 32k document read limit
  */
 
 import { v } from "convex/values";
@@ -11,18 +11,17 @@ import { Id } from "./_generated/dataModel";
 
 /**
  * Get aggregated dataset statistics
- * Uses efficient sampling to avoid hitting document limits
+ * Uses very small samples to stay well under 32k limit
  */
 export const getDatasetStats = query({
   handler: async (ctx) => {
-    // Use small samples to stay under 32k limit
-    // Total reads: 5000 + 5000 + 5000 + 5000 + 1000 + 500 = 21,500
-    const agents = await ctx.db.query("agents").take(5000);
-    const journalSample = await ctx.db.query("journals").take(5000);
-    const messageSample = await ctx.db.query("messages").take(5000);
-    const eventSample = await ctx.db.query("events").take(5000);
+    // Use very small samples - total ~6000 reads max
+    const agents = await ctx.db.query("agents").take(1000);
+    const journalSample = await ctx.db.query("journals").take(1000);
+    const messageSample = await ctx.db.query("messages").take(1000);
+    const eventSample = await ctx.db.query("events").take(1000);
     const friendships = await ctx.db.query("friendships").take(1000);
-    const coopActions = await ctx.db.query("coopActions").take(500);
+    const coopActions = await ctx.db.query("coopActions").take(1000);
 
     // Calculate LLM distribution from agents
     const llmCounts: Record<string, number> = {};
@@ -43,11 +42,11 @@ export const getDatasetStats = query({
     const trustEvents = eventSample.filter((e) => trustEventTypes.includes(e.type));
 
     return {
-      totalAgents: agents.length >= 5000 ? "5,000+" : agents.length,
-      totalDecisions: journalSample.length >= 5000 ? "5,000+" : journalSample.length,
-      totalMessages: messageSample.length >= 5000 ? "5,000+" : messageSample.length,
-      totalEvents: eventSample.length >= 5000 ? "5,000+" : eventSample.length,
-      totalFriendships: friendships.length,
+      totalAgents: agents.length >= 1000 ? "1,000+" : agents.length,
+      totalDecisions: journalSample.length >= 1000 ? "1,000+" : journalSample.length,
+      totalMessages: messageSample.length >= 1000 ? "1,000+" : messageSample.length,
+      totalEvents: eventSample.length >= 1000 ? "1,000+" : eventSample.length,
+      totalFriendships: friendships.length >= 1000 ? "1,000+" : friendships.length,
       totalCoopActions: coopActions.length,
       trustBetrayalEvents: trustEvents.length,
       negotiationRecords: messageSample.length,
@@ -62,7 +61,7 @@ export const getDatasetStats = query({
  */
 export const getLLMDistribution = query({
   handler: async (ctx) => {
-    const agents = await ctx.db.query("agents").take(5000);
+    const agents = await ctx.db.query("agents").take(1000);
 
     // Count by provider
     const byProvider: Record<string, number> = {};
@@ -118,10 +117,7 @@ export const getSampleDecisionLogs = query({
     const journals = await ctx.db
       .query("journals")
       .order("desc")
-      .take(limit * 3);
-
-    // Get sample count efficiently
-    const journalCount = await ctx.db.query("journals").take(5000);
+      .take(20);
 
     // Get agent info for each journal
     const samples = [];
@@ -134,16 +130,6 @@ export const getSampleDecisionLogs = query({
 
       const agent = await ctx.db.get(journal.agentId);
       if (!agent) continue;
-
-      // Get zone info if available in result
-      let zoneName = null;
-      if (journal.result?.data?.newLocation) {
-        const zone = await ctx.db
-          .query("zones")
-          .filter((q) => q.eq(q.field("slug"), journal.result.data.newLocation))
-          .first();
-        zoneName = zone?.name;
-      }
 
       samples.push({
         timestamp: journal.timestamp,
@@ -160,17 +146,19 @@ export const getSampleDecisionLogs = query({
           heat: agent.heat,
           reputation: agent.reputation,
         },
-        zoneName,
       });
 
       if (samples.length >= limit) break;
     }
 
+    // Estimate count from a small sample
+    const countSample = await ctx.db.query("journals").take(1000);
+
     return {
       datasetName: "Decision Logs",
       description:
         "Complete decision traces showing agent state, chosen action, outcome, and internal reasoning",
-      recordCount: journalCount.length >= 5000 ? 5000 : journalCount.length,
+      recordCount: countSample.length >= 1000 ? 1000 : countSample.length,
       samples,
     };
   },
@@ -183,10 +171,7 @@ export const getSampleNegotiations = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, { limit = 5 }) => {
     // Get recent messages
-    const messages = await ctx.db.query("messages").order("desc").take(100);
-
-    // Get message count efficiently
-    const messageCount = await ctx.db.query("messages").take(5000);
+    const messages = await ctx.db.query("messages").order("desc").take(50);
 
     // Group by conversation (sender-recipient pairs)
     const conversations: Map<
@@ -235,11 +220,14 @@ export const getSampleNegotiations = query({
         messages: conv.sort((a, b) => a.timestamp - b.timestamp),
       }));
 
+    // Estimate count
+    const countSample = await ctx.db.query("messages").take(1000);
+
     return {
       datasetName: "Negotiation Transcripts",
       description:
         "Multi-turn conversations between agents including bargaining, coordination, and social dynamics",
-      recordCount: messageCount.length >= 5000 ? 5000 : messageCount.length,
+      recordCount: countSample.length >= 1000 ? 1000 : countSample.length,
       samples: negotiations,
     };
   },
@@ -265,7 +253,7 @@ export const getSampleTrustEvents = query({
     ];
 
     // Get recent events (limited)
-    const events = await ctx.db.query("events").order("desc").take(500);
+    const events = await ctx.db.query("events").order("desc").take(200);
 
     const trustEvents = events.filter((e) => trustEventTypes.includes(e.type));
 
@@ -314,7 +302,7 @@ export const getSampleEconomicData = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, { limit = 5 }) => {
     // Get agents (limited)
-    const agents = await ctx.db.query("agents").take(1000);
+    const agents = await ctx.db.query("agents").take(100);
 
     // Sort by lifetime earnings to get most active economic actors
     const sortedAgents = agents
@@ -373,10 +361,7 @@ export const getSampleReasoningChains = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, { limit = 5 }) => {
     // Get journals with substantial reflections (limited)
-    const journals = await ctx.db.query("journals").order("desc").take(50);
-
-    // Get count efficiently
-    const journalCount = await ctx.db.query("journals").take(5000);
+    const journals = await ctx.db.query("journals").order("desc").take(30);
 
     // Filter for interesting reflections (longer ones with more detail)
     const interestingJournals = journals
@@ -386,13 +371,6 @@ export const getSampleReasoningChains = query({
     const samples = await Promise.all(
       interestingJournals.map(async (journal) => {
         const agent = await ctx.db.get(journal.agentId);
-
-        // Get agent's recent history for context
-        const recentJournals = await ctx.db
-          .query("journals")
-          .withIndex("by_agentId", (q) => q.eq("agentId", journal.agentId))
-          .order("desc")
-          .take(3);
 
         return {
           agentName: agent?.name || "Unknown",
@@ -412,19 +390,18 @@ export const getSampleReasoningChains = query({
                 }
               : null,
           },
-          recentActions: recentJournals.map((j) => ({
-            action: j.action,
-            reflection: j.reflection?.substring(0, 100) + "...",
-          })),
         };
       })
     );
+
+    // Estimate count
+    const countSample = await ctx.db.query("journals").take(1000);
 
     return {
       datasetName: "Reasoning Chains",
       description:
         "Internal thought processes, decision rationale, emotional states, and strategic planning",
-      recordCount: journalCount.length >= 5000 ? 5000 : journalCount.length,
+      recordCount: countSample.length >= 1000 ? 1000 : countSample.length,
       samples,
     };
   },

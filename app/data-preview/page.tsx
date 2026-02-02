@@ -225,8 +225,8 @@ function StatCard({
   };
 
   return (
-    <Card>
-      <CardContent className="pt-4">
+    <Card className="py-0">
+      <CardContent className="py-3">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-md bg-primary/10">
             <Icon className="w-4 h-4 text-primary" />
