@@ -53,6 +53,7 @@ type TaxResult = { assessed: number; paid: number; evaded: number };
 type BountyResult = { expired: number; refunded: number };
 type DisguiseResult = { expired: number };
 type JailReleaseResult = { released: number };
+type HospitalReleaseResult = { discharged: number };
 
 type TickRunResult =
   | { skipped: true; reason: string }
@@ -72,6 +73,7 @@ type TickRunResult =
       bountiesExpired: number;
       disguisesExpired: number;
       jailedReleased: number;
+      hospitalDischarged: number;
     };
 
 // ============================================================================
@@ -128,6 +130,7 @@ async function runTickHandler(ctx: ActionCtx): Promise<TickRunResult> {
   const bountyResult: BountyResult = await ctx.runMutation(internal.tickHelpers.processBountyExpiration);
   const disguiseResult: DisguiseResult = await ctx.runMutation(internal.tickHelpers.processDisguiseExpiration);
   const jailReleaseResult: JailReleaseResult = await ctx.runMutation(internal.tickHelpers.releaseJailedAgents);
+  const hospitalReleaseResult: HospitalReleaseResult = await ctx.runMutation(internal.tickHelpers.processHospitalReleases);
 
   // 12. Log tick event
   await ctx.runMutation(internal.tickHelpers.logTickEvent, {
@@ -160,6 +163,7 @@ async function runTickHandler(ctx: ActionCtx): Promise<TickRunResult> {
     bountiesExpired: bountyResult.expired,
     disguisesExpired: disguiseResult.expired,
     jailedReleased: jailReleaseResult.released,
+    hospitalDischarged: hospitalReleaseResult.discharged,
   };
 }
 

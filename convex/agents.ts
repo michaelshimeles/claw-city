@@ -330,7 +330,12 @@ export const getAgentState = query({
  * Returns the agent ID and the plain API key (only returned once!)
  */
 export const registerAgent = mutation({
-  args: { name: v.string() },
+  args: {
+    name: v.string(),
+    llmProvider: v.optional(v.string()),
+    llmModelName: v.optional(v.string()),
+    llmModelVersion: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     // Validate name
     const name = args.name.trim();
@@ -379,6 +384,15 @@ export const registerAgent = mutation({
       Math.random() * (DEFAULTS.startingCashMax - DEFAULTS.startingCashMin + 1)
     ) + DEFAULTS.startingCashMin;
 
+    // Build LLM info object if provider and model name are provided
+    const llmInfo = args.llmProvider && args.llmModelName
+      ? {
+          provider: args.llmProvider,
+          modelName: args.llmModelName,
+          ...(args.llmModelVersion && { modelVersion: args.llmModelVersion }),
+        }
+      : undefined;
+
     // Create the agent with default values
     const agentId = await ctx.db.insert("agents", {
       agentKeyHash: keyHash,
@@ -404,6 +418,8 @@ export const registerAgent = mutation({
       },
       // Tax fields - first assessment after taxIntervalTicks
       taxDueTick: currentTick + TAX_DEFAULTS.taxIntervalTicks,
+      // LLM info for data monetization
+      ...(llmInfo && { llmInfo }),
     });
 
     // Return the agent ID and the plain API key (only time it's returned!)

@@ -118,6 +118,12 @@ export default defineSchema({
         })
       )
     ),
+    // LLM info - tracks which model powers this agent (for data monetization)
+    llmInfo: v.optional(v.object({
+      provider: v.string(),      // "openai", "anthropic", "google", etc.
+      modelName: v.string(),     // "gpt-4", "claude-3-opus", etc.
+      modelVersion: v.optional(v.string()), // "2024-01-01" etc.
+    })),
   })
     .index("by_agentKeyHash", ["agentKeyHash"])
     .index("by_status", ["status"])

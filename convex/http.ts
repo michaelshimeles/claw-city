@@ -1218,14 +1218,19 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     // Parse request body
-    let body: { name?: string };
+    let body: {
+      name?: string;
+      llmProvider?: string;
+      llmModelName?: string;
+      llmModelVersion?: string;
+    };
     try {
       body = await request.json();
     } catch {
       return errorResponse("INVALID_REQUEST_ID", "Invalid JSON in request body");
     }
 
-    const { name } = body;
+    const { name, llmProvider, llmModelName, llmModelVersion } = body;
 
     if (!name || typeof name !== "string" || name.trim().length < 2) {
       return errorResponse(
@@ -1239,6 +1244,9 @@ http.route({
       const { api } = await import("./_generated/api");
       const result = await ctx.runMutation(api.agents.registerAgent, {
         name: name.trim(),
+        llmProvider,
+        llmModelName,
+        llmModelVersion,
       });
 
       return jsonResponse({

@@ -13,6 +13,7 @@ import type * as agentGuide from "../agentGuide.js";
 import type * as agents from "../agents.js";
 import type * as crons from "../crons.js";
 import type * as dashboard from "../dashboard.js";
+import type * as dataPreview from "../dataPreview.js";
 import type * as events from "../events.js";
 import type * as friendships from "../friendships.js";
 import type * as gangs from "../gangs.js";
@@ -50,6 +51,7 @@ declare const fullApi: ApiFromModules<{
   agents: typeof agents;
   crons: typeof crons;
   dashboard: typeof dashboard;
+  dataPreview: typeof dataPreview;
   events: typeof events;
   friendships: typeof friendships;
   gangs: typeof gangs;

@@ -1491,3 +1491,80 @@ export const releaseJailedAgents = internalMutation({
     return { released };
   },
 });
+
+/**
+ * Process hospital releases - discharge recovered agents
+ * Called each tick to check if hospitalized agents have recovered
+ */
+export const processHospitalReleases = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const world = await ctx.db.query("world").first();
+    if (!world) {
+      return { discharged: 0 };
+    }
+
+    const currentTick = world.tick;
+    const DEFAULT_RECOVERY_TICKS = 50; // Default recovery time if busyUntilTick not set
+
+    // Find all hospitalized agents
+    const hospitalizedAgents = await ctx.db
+      .query("agents")
+      .withIndex("by_status", (q) => q.eq("status", "hospitalized"))
+      .collect();
+
+    // Get hospital zone for discharge location
+    const hospitalZone = await ctx.db
+      .query("zones")
+      .withIndex("by_slug", (q) => q.eq("slug", "hospital"))
+      .first();
+
+    let discharged = 0;
+
+    for (const agent of hospitalizedAgents) {
+      let shouldDischarge = false;
+
+      if (agent.busyUntilTick !== null && agent.busyUntilTick <= currentTick) {
+        // Has a recovery tick set and it has passed
+        shouldDischarge = true;
+      } else if (agent.busyUntilTick === null) {
+        // No recovery tick set (bug from crime/rob failures) - auto-recover after default time
+        // Set the recovery tick now so they'll be released next time
+        await ctx.db.patch(agent._id, {
+          busyUntilTick: currentTick + DEFAULT_RECOVERY_TICKS,
+          busyAction: "RECOVERING",
+        });
+        continue; // Don't discharge yet, they just got their recovery time set
+      }
+
+      if (shouldDischarge) {
+        // Discharge the agent - restore to idle with some health
+        await ctx.db.patch(agent._id, {
+          status: "idle",
+          busyUntilTick: null,
+          busyAction: null,
+          health: Math.max(agent.health, 50), // Ensure at least 50 health on discharge
+          locationZoneId: hospitalZone?._id ?? agent.locationZoneId,
+        });
+
+        // Log recovery event
+        await ctx.db.insert("events", {
+          tick: currentTick,
+          timestamp: Date.now(),
+          type: "AGENT_RECOVERED",
+          agentId: agent._id,
+          zoneId: hospitalZone?._id ?? null,
+          entityId: null,
+          payload: {
+            reason: agent.busyAction ?? "HOSPITALIZED",
+          },
+          requestId: null,
+        });
+
+        discharged++;
+      }
+    }
+
+    return { discharged };
+  },
+});
