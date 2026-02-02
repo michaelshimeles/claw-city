@@ -608,7 +608,6 @@ export const executeAgentAction = internalMutation({
     }
 
     // Simple idempotency check via journals (no separate lock table)
-    const now = Date.now();
     const existingJournal = await ctx.db
       .query("journals")
       .withIndex("by_agentId_requestId", (q) =>
@@ -686,29 +685,8 @@ export const executeAgentAction = internalMutation({
         : null,
     };
 
-    // Update rate limit counter (in same transaction to avoid OCC conflicts)
-    const windowStart = now - RATE_LIMIT_WINDOW_MS;
-    const existingRateLimit = await ctx.db
-      .query("rateLimits")
-      .withIndex("by_keyHash", (q) => q.eq("keyHash", args.keyHash))
-      .first();
-
-    if (!existingRateLimit) {
-      await ctx.db.insert("rateLimits", {
-        keyHash: args.keyHash,
-        windowStart: now,
-        requestCount: 1,
-      });
-    } else if (existingRateLimit.windowStart < windowStart) {
-      await ctx.db.patch(existingRateLimit._id, {
-        windowStart: now,
-        requestCount: 1,
-      });
-    } else {
-      await ctx.db.patch(existingRateLimit._id, {
-        requestCount: existingRateLimit.requestCount + 1,
-      });
-    }
+    // Rate limit is updated separately via updateRateLimit mutation
+    // to avoid OCC conflicts when multiple agents act simultaneously
 
     return response;
   },
@@ -1193,6 +1171,10 @@ http.route({
       reflection,
       mood,
     });
+
+    // Update rate limit counter separately to avoid OCC conflicts
+    // This runs in a separate transaction so it won't conflict with agent state updates
+    await ctx.runMutation(internal.http.updateRateLimit, { keyHash });
 
     // Handle unauthorized error specially
     if (!result.ok && "error" in result && result.error === "UNAUTHORIZED") {
