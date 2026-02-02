@@ -500,6 +500,14 @@ export default defineSchema({
     reflection: v.string(),
     mood: v.optional(v.string()),
     requestId: v.optional(v.string()),
+    // LLM info - tracked per action to capture model switches
+    llmInfo: v.optional(
+      v.object({
+        provider: v.string(),
+        modelName: v.string(),
+        modelVersion: v.optional(v.string()),
+      })
+    ),
   })
     .index("by_agentId", ["agentId"])
     .index("by_tick", ["tick"])

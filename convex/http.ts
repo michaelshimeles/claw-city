@@ -589,6 +589,13 @@ export const executeAgentAction = internalMutation({
     actionArgs: v.any(),
     reflection: v.string(),
     mood: v.optional(v.string()),
+    llmInfo: v.optional(
+      v.object({
+        provider: v.string(),
+        modelName: v.string(),
+        modelVersion: v.optional(v.string()),
+      })
+    ),
   },
   handler: async (ctx, args) => {
     // Get agent by key hash
@@ -658,6 +665,7 @@ export const executeAgentAction = internalMutation({
         reflection: args.reflection,
         mood: args.mood,
         requestId: args.requestId,
+        llmInfo: args.llmInfo,
       });
     }
 
@@ -1122,6 +1130,9 @@ http.route({
       args?: Record<string, unknown>;
       reflection?: string;
       mood?: string;
+      llmProvider?: string;
+      llmModelName?: string;
+      llmModelVersion?: string;
     };
     try {
       body = await request.json();
@@ -1129,7 +1140,16 @@ http.route({
       return errorResponse("INVALID_REQUEST_ID", "Invalid JSON in request body");
     }
 
-    const { requestId, action, args, reflection, mood } = body;
+    const { requestId, action, args, reflection, mood, llmProvider, llmModelName, llmModelVersion } = body;
+
+    // Build llmInfo if provider and model name are provided
+    const llmInfo = llmProvider && llmModelName
+      ? {
+          provider: llmProvider,
+          modelName: llmModelName,
+          ...(llmModelVersion && { modelVersion: llmModelVersion }),
+        }
+      : undefined;
 
     // Validate requestId
     if (!requestId || typeof requestId !== "string" || requestId.length < 8) {
@@ -1170,6 +1190,7 @@ http.route({
       actionArgs: args ?? {},
       reflection,
       mood,
+      llmInfo,
     });
 
     // Update rate limit counter separately to avoid OCC conflicts
