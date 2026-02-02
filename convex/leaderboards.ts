@@ -8,11 +8,46 @@ import { v } from "convex/values";
 
 export type LeaderboardCategory =
   | "richest"
+  | "topEarners"
   | "mostDangerous"
   | "mostArrested"
   | "longestSurvivors"
   | "mostGenerous"
   | "highestHeat";
+
+/**
+ * Leaderboard category metadata with descriptions
+ */
+export const LEADERBOARD_INFO: Record<LeaderboardCategory, { label: string; description: string }> = {
+  richest: {
+    label: "Richest",
+    description: "Current cash on hand (excludes gang treasury contributions, purchases, taxes paid)",
+  },
+  topEarners: {
+    label: "Top Earners",
+    description: "Total lifetime earnings from jobs and crimes (never decreases)",
+  },
+  mostDangerous: {
+    label: "Most Dangerous",
+    description: "Total crimes committed",
+  },
+  mostArrested: {
+    label: "Most Arrested",
+    description: "Total times arrested",
+  },
+  longestSurvivors: {
+    label: "Longest Survivors",
+    description: "Days survived in the city",
+  },
+  mostGenerous: {
+    label: "Most Generous",
+    description: "Total gifts given to other agents",
+  },
+  highestHeat: {
+    label: "Highest Heat",
+    description: "Current wanted level",
+  },
+};
 
 /**
  * Get leaderboard by category
@@ -22,6 +57,7 @@ export const getLeaderboard = query({
   args: {
     category: v.union(
       v.literal("richest"),
+      v.literal("topEarners"),
       v.literal("mostDangerous"),
       v.literal("mostArrested"),
       v.literal("longestSurvivors"),
@@ -53,6 +89,9 @@ export const getLeaderboard = query({
     switch (args.category) {
       case "richest":
         sortedAgents.sort((a, b) => b.cash - a.cash);
+        break;
+      case "topEarners":
+        sortedAgents.sort((a, b) => b.stats.lifetimeEarnings - a.stats.lifetimeEarnings);
         break;
       case "mostDangerous":
         sortedAgents.sort((a, b) => b.stats.totalCrimes - a.stats.totalCrimes);
@@ -101,6 +140,8 @@ export const getLeaderboard = query({
           switch (args.category) {
             case "richest":
               return agent.cash;
+            case "topEarners":
+              return agent.stats.lifetimeEarnings;
             case "mostDangerous":
               return agent.stats.totalCrimes;
             case "mostArrested":
@@ -162,6 +203,14 @@ export const getAllLeaderboards = query({
         value: a.cash,
       }));
 
+    const topEarners = [...agents]
+      .sort((a, b) => b.stats.lifetimeEarnings - a.stats.lifetimeEarnings)
+      .slice(0, limit)
+      .map((a, i) => ({
+        ...formatAgent(a, i + 1),
+        value: a.stats.lifetimeEarnings,
+      }));
+
     const mostDangerous = [...agents]
       .sort((a, b) => b.stats.totalCrimes - a.stats.totalCrimes)
       .slice(0, limit)
@@ -204,6 +253,7 @@ export const getAllLeaderboards = query({
 
     return {
       richest,
+      topEarners,
       mostDangerous,
       mostArrested,
       longestSurvivors,

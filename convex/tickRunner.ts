@@ -54,6 +54,7 @@ type BountyResult = { expired: number; refunded: number };
 type DisguiseResult = { expired: number };
 type JailReleaseResult = { released: number };
 type HospitalReleaseResult = { discharged: number };
+type DaySurvivedResult = { incremented: number };
 
 type TickRunResult =
   | { skipped: true; reason: string }
@@ -74,6 +75,7 @@ type TickRunResult =
       disguisesExpired: number;
       jailedReleased: number;
       hospitalDischarged: number;
+      daysSurvivedIncremented: number;
     };
 
 // ============================================================================
@@ -132,7 +134,10 @@ async function runTickHandler(ctx: ActionCtx): Promise<TickRunResult> {
   const jailReleaseResult: JailReleaseResult = await ctx.runMutation(internal.tickHelpers.releaseJailedAgents);
   const hospitalReleaseResult: HospitalReleaseResult = await ctx.runMutation(internal.tickHelpers.processHospitalReleases);
 
-  // 12. Log tick event
+  // 12. Process day survived (every 100 ticks = 1 game day)
+  const daySurvivedResult: DaySurvivedResult = await ctx.runMutation(internal.tickHelpers.processDaySurvived);
+
+  // 13. Log tick event
   await ctx.runMutation(internal.tickHelpers.logTickEvent, {
     tick: tickResult.tick,
     resolvedAgents: busyResult.resolved,
@@ -164,6 +169,7 @@ async function runTickHandler(ctx: ActionCtx): Promise<TickRunResult> {
     disguisesExpired: disguiseResult.expired,
     jailedReleased: jailReleaseResult.released,
     hospitalDischarged: hospitalReleaseResult.discharged,
+    daysSurvivedIncremented: daySurvivedResult.incremented,
   };
 }
 

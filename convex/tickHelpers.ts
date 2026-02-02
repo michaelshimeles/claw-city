@@ -1568,3 +1568,43 @@ export const processHospitalReleases = internalMutation({
     return { discharged };
   },
 });
+
+/**
+ * Increment daysSurvived for all active agents
+ * Called every 100 ticks (same interval as taxes = 1 "day" in game time)
+ */
+export const processDaySurvived = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const world = await ctx.db.query("world").first();
+    if (!world) {
+      return { incremented: 0 };
+    }
+
+    const currentTick = world.tick;
+
+    // Only process every 100 ticks (1 game day = ~100 minutes real time)
+    if (currentTick % TAX_DEFAULTS.taxIntervalTicks !== 0) {
+      return { incremented: 0 };
+    }
+
+    // Get all agents (dead agents would be removed or marked differently)
+    const agents = await ctx.db.query("agents").collect();
+
+    let incremented = 0;
+
+    for (const agent of agents) {
+      // Increment daysSurvived for all living agents
+      // (even jailed/hospitalized agents are still "surviving")
+      await ctx.db.patch(agent._id, {
+        stats: {
+          ...agent.stats,
+          daysSurvived: agent.stats.daysSurvived + 1,
+        },
+      });
+      incremented++;
+    }
+
+    return { incremented };
+  },
+});

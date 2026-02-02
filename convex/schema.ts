@@ -287,6 +287,15 @@ export default defineSchema({
     requestCount: v.number(),
   }).index("by_keyHash", ["keyHash"]),
 
+  // Data preview sessions - short-lived tokens for data preview access
+  dataPreviewSessions: defineTable({
+    token: v.string(),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+  })
+    .index("by_token", ["token"])
+    .index("by_expiresAt", ["expiresAt"]),
+
   // ============================================================================
   // SOCIAL FEATURES TABLES
   // ============================================================================

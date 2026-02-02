@@ -6,15 +6,140 @@
  */
 
 import { v } from "convex/values";
-import { query } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
+
+const DATA_PREVIEW_SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
+const REDACTION_PREVIEW_MAX = 120;
+
+const TRUST_EVENT_TYPES = [
+  "GANG_BETRAYED",
+  "FRIEND_REQUEST_ACCEPTED",
+  "FRIEND_REMOVED",
+  "GANG_MEMBER_KICKED",
+  "GANG_LEFT",
+  "AGENT_ROBBED",
+  "ROB_ATTEMPT_FAILED",
+  "COOP_CRIME_SUCCESS",
+  "COOP_CRIME_FAILED",
+];
+
+function generateSessionToken(): string {
+  return `dp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+}
+
+async function getValidSession(ctx: { db: any }, sessionToken: string) {
+  const session = await ctx.db
+    .query("dataPreviewSessions")
+    .withIndex("by_token", (q: any) => q.eq("token", sessionToken))
+    .first();
+
+  if (!session) {
+    return null;
+  }
+
+  if (session.expiresAt <= Date.now()) {
+    return null;
+  }
+
+  return session;
+}
+
+function agentAlias(agentId?: string | null): string {
+  if (!agentId) return "agent_unknown";
+  return `agent_${agentId.toString().slice(-6)}`;
+}
+
+function redactText(text: string) {
+  const trimmed = text.trim();
+  const length = trimmed.length;
+  const wordCount = trimmed ? trimmed.split(/\s+/).length : 0;
+  const sentenceCount = trimmed ? trimmed.split(/[.!?]+/).filter(Boolean).length : 0;
+  const previewShape = trimmed
+    .slice(0, REDACTION_PREVIEW_MAX)
+    .replace(/[A-Za-z0-9]/g, "•");
+
+  return {
+    redacted: true as const,
+    previewShape,
+    length,
+    wordCount,
+    sentenceCount,
+    tokenEstimate: Math.ceil(length / 4),
+  };
+}
+
+function redactDeep(value: unknown): unknown {
+  if (typeof value === "string") {
+    return redactText(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => redactDeep(item));
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    const redacted: Record<string, unknown> = {};
+    for (const [key, entryValue] of entries) {
+      redacted[key] = redactDeep(entryValue);
+    }
+    return redacted;
+  }
+  return value;
+}
+
+/**
+ * Create a data preview session token
+ */
+export const createDataPreviewSession = mutation({
+  args: { password: v.string() },
+  handler: async (ctx, { password }) => {
+    const expected = process.env.DATA_PREVIEW_PASSWORD;
+    if (!expected) {
+      throw new Error("DATA_PREVIEW_PASSWORD not set");
+    }
+
+    if (password !== expected) {
+      return { ok: false };
+    }
+
+    const now = Date.now();
+    const sessionToken = generateSessionToken();
+    const expiresAt = now + DATA_PREVIEW_SESSION_TTL_MS;
+
+    await ctx.db.insert("dataPreviewSessions", {
+      token: sessionToken,
+      createdAt: now,
+      expiresAt,
+    });
+
+    return { ok: true, sessionToken, expiresAt };
+  },
+});
+
+/**
+ * Validate a data preview session token
+ */
+export const validateDataPreviewSession = query({
+  args: { sessionToken: v.string() },
+  handler: async (ctx, { sessionToken }) => {
+    const session = await getValidSession(ctx, sessionToken);
+    return {
+      valid: Boolean(session),
+      expiresAt: session?.expiresAt ?? null,
+    };
+  },
+});
 
 /**
  * Get aggregated dataset statistics
  * Uses very small samples to stay well under 32k limit
  */
 export const getDatasetStats = query({
-  handler: async (ctx) => {
+  args: { sessionToken: v.string() },
+  handler: async (ctx, { sessionToken }) => {
+    const session = await getValidSession(ctx, sessionToken);
+    if (!session) return null;
+
     // Use very small samples - total ~6000 reads max
     const agents = await ctx.db.query("agents").take(1000);
     const journalSample = await ctx.db.query("journals").take(1000);
@@ -32,14 +157,7 @@ export const getDatasetStats = query({
       }
     }
 
-    // Count trust/betrayal events from sample
-    const trustEventTypes = [
-      "BETRAY_GANG",
-      "FRIENDSHIP_ACCEPTED",
-      "FRIENDSHIP_BLOCKED",
-      "GANG_MEMBER_KICKED",
-    ];
-    const trustEvents = eventSample.filter((e) => trustEventTypes.includes(e.type));
+    const trustEvents = eventSample.filter((e) => TRUST_EVENT_TYPES.includes(e.type));
 
     return {
       totalAgents: agents.length >= 1000 ? "1,000+" : agents.length,
@@ -60,7 +178,11 @@ export const getDatasetStats = query({
  * Get LLM distribution statistics
  */
 export const getLLMDistribution = query({
-  handler: async (ctx) => {
+  args: { sessionToken: v.string() },
+  handler: async (ctx, { sessionToken }) => {
+    const session = await getValidSession(ctx, sessionToken);
+    if (!session) return null;
+
     const agents = await ctx.db.query("agents").take(1000);
 
     // Count by provider
@@ -81,6 +203,10 @@ export const getLLMDistribution = query({
     // Calculate percentages
     const total = agents.length;
     const withLLM = Object.values(byProvider).reduce((a, b) => a + b, 0);
+
+    if (total - withLLM > 0) {
+      byProvider.unknown = total - withLLM;
+    }
 
     const providerStats = Object.entries(byProvider)
       .map(([provider, count]) => ({
@@ -112,12 +238,15 @@ export const getLLMDistribution = query({
  * Get sample decision logs (from journals)
  */
 export const getSampleDecisionLogs = query({
-  args: { limit: v.optional(v.number()) },
-  handler: async (ctx, { limit = 10 }) => {
+  args: { sessionToken: v.string(), limit: v.optional(v.number()) },
+  handler: async (ctx, { sessionToken, limit = 5 }) => {
+    const session = await getValidSession(ctx, sessionToken);
+    if (!session) return null;
+
     const journals = await ctx.db
       .query("journals")
       .order("desc")
-      .take(50);
+      .take(20);
 
     // Get agent info for each journal
     const samples = [];
@@ -134,11 +263,11 @@ export const getSampleDecisionLogs = query({
       samples.push({
         timestamp: journal.timestamp,
         tick: journal.tick,
-        agentName: agent.name,
+        agentAlias: agentAlias(agent._id.toString()),
         action: journal.action,
-        actionArgs: journal.actionArgs,
-        result: journal.result,
-        reflection: journal.reflection,
+        actionArgs: redactDeep(journal.actionArgs),
+        result: redactDeep(journal.result),
+        reflection: redactText(journal.reflection),
         mood: journal.mood,
         agentState: {
           cash: agent.cash,
@@ -158,7 +287,7 @@ export const getSampleDecisionLogs = query({
       datasetName: "Decision Logs",
       description:
         "Complete decision traces showing agent state, chosen action, outcome, and internal reasoning",
-      recordCount: countSample.length >= 1000 ? 1000 : countSample.length,
+      recordCount: countSample.length >= 1000 ? "1,000+" : countSample.length,
       samples,
     };
   },
@@ -168,23 +297,27 @@ export const getSampleDecisionLogs = query({
  * Get sample negotiations (multi-message conversations between agents)
  */
 export const getSampleNegotiations = query({
-  args: { limit: v.optional(v.number()) },
-  handler: async (ctx, { limit = 10 }) => {
+  args: { sessionToken: v.string(), limit: v.optional(v.number()) },
+  handler: async (ctx, { sessionToken, limit = 5 }) => {
+    const session = await getValidSession(ctx, sessionToken);
+    if (!session) return null;
+
     // Get recent messages
-    const messages = await ctx.db.query("messages").order("desc").take(100);
+    const messages = await ctx.db.query("messages").order("desc").take(50);
 
     // Group by conversation (sender-recipient pairs)
     const conversations: Map<
       string,
-      Array<{
-        senderId: string;
-        senderName: string;
-        recipientId: string;
-        recipientName: string;
-        content: string;
-        tick: number;
-        timestamp: number;
-      }>
+      {
+        participants: string[];
+        messages: Array<{
+          senderId: string;
+          recipientId: string;
+          content: ReturnType<typeof redactText>;
+          tick: number;
+          timestamp: number;
+        }>;
+      }
     > = new Map();
 
     for (const msg of messages) {
@@ -193,18 +326,16 @@ export const getSampleNegotiations = query({
       const key = ids.join("-");
 
       if (!conversations.has(key)) {
-        conversations.set(key, []);
+        conversations.set(key, {
+          participants: ids.map((id) => agentAlias(id)),
+          messages: [],
+        });
       }
 
-      const sender = await ctx.db.get(msg.senderId);
-      const recipient = await ctx.db.get(msg.recipientId);
-
-      conversations.get(key)!.push({
+      conversations.get(key)!.messages.push({
         senderId: msg.senderId.toString(),
-        senderName: sender?.name || "Unknown",
         recipientId: msg.recipientId.toString(),
-        recipientName: recipient?.name || "Unknown",
-        content: msg.content,
+        content: redactText(msg.content),
         tick: msg.tick,
         timestamp: msg.timestamp,
       });
@@ -212,12 +343,12 @@ export const getSampleNegotiations = query({
 
     // Get conversations with at least 2 messages (back and forth)
     const negotiations = Array.from(conversations.values())
-      .filter((conv) => conv.length >= 2)
+      .filter((conv) => conv.messages.length >= 2)
       .slice(0, limit)
       .map((conv) => ({
-        participants: [conv[0].senderName, conv[0].recipientName],
-        turnCount: conv.length,
-        messages: conv.sort((a, b) => a.timestamp - b.timestamp),
+        participants: conv.participants,
+        turnCount: conv.messages.length,
+        messages: conv.messages.sort((a, b) => a.timestamp - b.timestamp),
       }));
 
     // Estimate count
@@ -227,7 +358,7 @@ export const getSampleNegotiations = query({
       datasetName: "Negotiation Transcripts",
       description:
         "Multi-turn conversations between agents including bargaining, coordination, and social dynamics",
-      recordCount: countSample.length >= 1000 ? 1000 : countSample.length,
+      recordCount: countSample.length >= 1000 ? "1,000+" : countSample.length,
       samples: negotiations,
     };
   },
@@ -237,51 +368,33 @@ export const getSampleNegotiations = query({
  * Get sample trust and betrayal events
  */
 export const getSampleTrustEvents = query({
-  args: { limit: v.optional(v.number()) },
-  handler: async (ctx, { limit = 10 }) => {
-    // Get events related to trust and betrayal
-    const trustEventTypes = [
-      "BETRAY_GANG",
-      "FRIENDSHIP_ACCEPTED",
-      "FRIENDSHIP_BLOCKED",
-      "FRIENDSHIP_REMOVED",
-      "GANG_MEMBER_KICKED",
-      "GANG_MEMBER_LEFT",
-      "ROB_AGENT",
-      "COOP_CRIME_SUCCESS",
-      "COOP_CRIME_FAILED",
-    ];
+  args: { sessionToken: v.string(), limit: v.optional(v.number()) },
+  handler: async (ctx, { sessionToken, limit = 5 }) => {
+    const session = await getValidSession(ctx, sessionToken);
+    if (!session) return null;
 
     // Get recent events (limited)
     const events = await ctx.db.query("events").order("desc").take(200);
 
-    const trustEvents = events.filter((e) => trustEventTypes.includes(e.type));
+    const trustEvents = events.filter((e) => TRUST_EVENT_TYPES.includes(e.type));
 
     const samples = [];
     for (const event of trustEvents.slice(0, limit)) {
-      let agentName = null;
-      let targetName = null;
-
-      if (event.agentId) {
-        const agent = await ctx.db.get(event.agentId);
-        agentName = agent?.name;
-      }
-
-      // Try to get target agent from payload
-      if (event.payload?.targetAgentId) {
-        const target = await ctx.db.get(event.payload.targetAgentId as Id<"agents">);
-        if (target && "name" in target) {
-          targetName = target.name;
-        }
-      }
+      const agentAliasName = event.agentId
+        ? agentAlias(event.agentId.toString())
+        : null;
+      const targetAgentId = event.payload?.targetAgentId as
+        | Id<"agents">
+        | undefined;
+      const targetAlias = targetAgentId ? agentAlias(targetAgentId.toString()) : null;
 
       samples.push({
         type: event.type,
         tick: event.tick,
         timestamp: event.timestamp,
-        agentName,
-        targetName,
-        payload: event.payload,
+        agentAlias: agentAliasName,
+        targetAlias,
+        payload: redactDeep(event.payload),
       });
     }
 
@@ -289,7 +402,7 @@ export const getSampleTrustEvents = query({
       datasetName: "Trust & Betrayal Events",
       description:
         "Relationship dynamics including friendship formation, gang loyalty, betrayals, and cooperative outcomes",
-      recordCount: trustEvents.length,
+      recordCount: trustEvents.length >= 200 ? "200+" : trustEvents.length,
       samples,
     };
   },
@@ -299,8 +412,11 @@ export const getSampleTrustEvents = query({
  * Get sample economic/wealth trajectory data
  */
 export const getSampleEconomicData = query({
-  args: { limit: v.optional(v.number()) },
-  handler: async (ctx, { limit = 10 }) => {
+  args: { sessionToken: v.string(), limit: v.optional(v.number()) },
+  handler: async (ctx, { sessionToken, limit = 5 }) => {
+    const session = await getValidSession(ctx, sessionToken);
+    if (!session) return null;
+
     // Get agents (limited)
     const agents = await ctx.db.query("agents").take(100);
 
@@ -329,7 +445,7 @@ export const getSampleEconomicData = query({
         );
 
         return {
-          agentName: agent.name,
+          agentAlias: agentAlias(agent._id.toString()),
           currentCash: agent.cash,
           lifetimeEarnings: agent.stats.lifetimeEarnings,
           jobsCompleted: agent.stats.jobsCompleted,
@@ -338,7 +454,7 @@ export const getSampleEconomicData = query({
           recentEconomicActivity: economicEvents.map((e) => ({
             type: e.type,
             tick: e.tick,
-            payload: e.payload,
+            payload: redactDeep(e.payload),
           })),
         };
       })
@@ -348,7 +464,7 @@ export const getSampleEconomicData = query({
       datasetName: "Economic Strategies",
       description:
         "Wealth trajectories, income sources, spending patterns, and economic decision-making",
-      recordCount: agents.length,
+      recordCount: agents.length >= 100 ? "100+" : agents.length,
       samples,
     };
   },
@@ -358,10 +474,13 @@ export const getSampleEconomicData = query({
  * Get sample reasoning chains (reflections from journals)
  */
 export const getSampleReasoningChains = query({
-  args: { limit: v.optional(v.number()) },
-  handler: async (ctx, { limit = 10 }) => {
+  args: { sessionToken: v.string(), limit: v.optional(v.number()) },
+  handler: async (ctx, { sessionToken, limit = 5 }) => {
+    const session = await getValidSession(ctx, sessionToken);
+    if (!session) return null;
+
     // Get journals with substantial reflections (limited)
-    const journals = await ctx.db.query("journals").order("desc").take(50);
+    const journals = await ctx.db.query("journals").order("desc").take(30);
 
     // Filter for interesting reflections (longer ones with more detail)
     const interestingJournals = journals
@@ -373,12 +492,12 @@ export const getSampleReasoningChains = query({
         const agent = await ctx.db.get(journal.agentId);
 
         return {
-          agentName: agent?.name || "Unknown",
+          agentAlias: agentAlias(journal.agentId.toString()),
           action: journal.action,
-          actionArgs: journal.actionArgs,
-          reasoning: journal.reflection,
+          actionArgs: redactDeep(journal.actionArgs),
+          reasoning: redactText(journal.reflection),
           mood: journal.mood,
-          outcome: journal.result,
+          outcome: redactDeep(journal.result),
           context: {
             tick: journal.tick,
             agentStats: agent
@@ -401,7 +520,7 @@ export const getSampleReasoningChains = query({
       datasetName: "Reasoning Chains",
       description:
         "Internal thought processes, decision rationale, emotional states, and strategic planning",
-      recordCount: countSample.length >= 1000 ? 1000 : countSample.length,
+      recordCount: countSample.length >= 1000 ? "1,000+" : countSample.length,
       samples,
     };
   },

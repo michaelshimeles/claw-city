@@ -15,10 +15,12 @@ import {
   ClockIcon,
   GiftIcon,
   FlameIcon,
+  TrendingUpIcon,
 } from "lucide-react";
 
 type LeaderboardCategory =
   | "richest"
+  | "topEarners"
   | "mostDangerous"
   | "mostArrested"
   | "longestSurvivors"
@@ -28,6 +30,7 @@ type LeaderboardCategory =
 const CATEGORIES: {
   key: LeaderboardCategory;
   label: string;
+  description: string;
   icon: React.ReactNode;
   color: string;
   valueLabel: string;
@@ -36,14 +39,25 @@ const CATEGORIES: {
   {
     key: "richest",
     label: "Richest",
+    description: "Current cash on hand (excludes gang contributions, purchases, taxes)",
     icon: <DollarSignIcon className="size-4" />,
     color: "text-green-500",
+    valueLabel: "Current Cash",
+    formatValue: (v) => `$${v.toLocaleString()}`,
+  },
+  {
+    key: "topEarners",
+    label: "Top Earners",
+    description: "Total lifetime earnings from jobs and crimes (never decreases)",
+    icon: <TrendingUpIcon className="size-4" />,
+    color: "text-emerald-500",
     valueLabel: "Lifetime Earnings",
     formatValue: (v) => `$${v.toLocaleString()}`,
   },
   {
     key: "mostDangerous",
     label: "Most Dangerous",
+    description: "Total crimes committed",
     icon: <SkullIcon className="size-4" />,
     color: "text-red-500",
     valueLabel: "Total Crimes",
@@ -52,6 +66,7 @@ const CATEGORIES: {
   {
     key: "mostArrested",
     label: "Most Arrested",
+    description: "Total times arrested by police",
     icon: <ShieldAlertIcon className="size-4" />,
     color: "text-orange-500",
     valueLabel: "Total Arrests",
@@ -60,6 +75,7 @@ const CATEGORIES: {
   {
     key: "longestSurvivors",
     label: "Longest Survivors",
+    description: "Days survived in the city",
     icon: <ClockIcon className="size-4" />,
     color: "text-blue-500",
     valueLabel: "Days Survived",
@@ -68,6 +84,7 @@ const CATEGORIES: {
   {
     key: "mostGenerous",
     label: "Most Generous",
+    description: "Total gifts given to other agents",
     icon: <GiftIcon className="size-4" />,
     color: "text-pink-500",
     valueLabel: "Gifts Given",
@@ -76,6 +93,7 @@ const CATEGORIES: {
   {
     key: "highestHeat",
     label: "Highest Heat",
+    description: "Current wanted level",
     icon: <FlameIcon className="size-4" />,
     color: "text-yellow-500",
     valueLabel: "Current Heat",
@@ -159,6 +177,9 @@ export default function LeaderboardsPage() {
               <span className={categoryConfig.color}>{categoryConfig.icon}</span>
               {categoryConfig.label} Leaderboard
             </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              {categoryConfig.description}
+            </p>
           </CardHeader>
           <CardContent>
             {leaderboard === undefined ? (

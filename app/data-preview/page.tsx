@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import {
   Card,
@@ -28,20 +28,32 @@ import {
   ChevronUpIcon,
 } from "lucide-react";
 
-const CORRECT_PASSWORD = "Shimeles123Michael456Rasmic";
+const DATA_PREVIEW_TOKEN_KEY = "data-preview-token";
 
-function PasswordGate({ onAuthenticated }: { onAuthenticated: () => void }) {
+function PasswordGate({ onAuthenticated }: { onAuthenticated: (token: string) => void }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const createSession = useMutation(api.dataPreview.createDataPreviewSession);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === CORRECT_PASSWORD) {
-      localStorage.setItem("data-preview-auth", "true");
-      onAuthenticated();
-    } else {
+    setSubmitting(true);
+    setError(false);
+    try {
+      const result = await createSession({ password });
+      if (result?.ok && result.sessionToken) {
+        localStorage.setItem(DATA_PREVIEW_TOKEN_KEY, result.sessionToken);
+        onAuthenticated(result.sessionToken);
+        return;
+      }
       setError(true);
       setTimeout(() => setError(false), 2000);
+    } catch {
+      setError(true);
+      setTimeout(() => setError(false), 2000);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -72,7 +84,7 @@ function PasswordGate({ onAuthenticated }: { onAuthenticated: () => void }) {
             {error && (
               <p className="text-xs text-red-500">Incorrect password</p>
             )}
-            <Button type="submit" className="w-full">
+            <Button type="submit" className="w-full" disabled={submitting}>
               Access Dashboard
             </Button>
           </form>
@@ -139,13 +151,14 @@ function DatasetCard({
 }: {
   name: string;
   description: string;
-  recordCount: number;
+  recordCount: number | string;
   samples: unknown[];
   icon: React.ElementType;
 }) {
   const [selectedSample, setSelectedSample] = useState(0);
 
-  const formatRecordCount = (count: number) => {
+  const formatRecordCount = (count: number | string) => {
+    if (typeof count === "string") return count;
     if (count >= 1000000) return (count / 1000000).toFixed(1) + "M";
     if (count >= 1000) return (count / 1000).toFixed(1) + "K";
     return count.toLocaleString();
@@ -288,14 +301,14 @@ function LLMDistributionCard({
   );
 }
 
-function DataPreviewDashboard() {
-  const stats = useQuery(api.dataPreview.getDatasetStats);
-  const llmDistribution = useQuery(api.dataPreview.getLLMDistribution);
-  const decisionLogs = useQuery(api.dataPreview.getSampleDecisionLogs, { limit: 10 });
-  const negotiations = useQuery(api.dataPreview.getSampleNegotiations, { limit: 10 });
-  const trustEvents = useQuery(api.dataPreview.getSampleTrustEvents, { limit: 10 });
-  const economicData = useQuery(api.dataPreview.getSampleEconomicData, { limit: 10 });
-  const reasoningChains = useQuery(api.dataPreview.getSampleReasoningChains, { limit: 10 });
+function DataPreviewDashboard({ sessionToken }: { sessionToken: string }) {
+  const stats = useQuery(api.dataPreview.getDatasetStats, { sessionToken });
+  const llmDistribution = useQuery(api.dataPreview.getLLMDistribution, { sessionToken });
+  const decisionLogs = useQuery(api.dataPreview.getSampleDecisionLogs, { sessionToken, limit: 5 });
+  const negotiations = useQuery(api.dataPreview.getSampleNegotiations, { sessionToken, limit: 5 });
+  const trustEvents = useQuery(api.dataPreview.getSampleTrustEvents, { sessionToken, limit: 5 });
+  const economicData = useQuery(api.dataPreview.getSampleEconomicData, { sessionToken, limit: 5 });
+  const reasoningChains = useQuery(api.dataPreview.getSampleReasoningChains, { sessionToken, limit: 5 });
 
   if (!stats || !llmDistribution) {
     return (
@@ -439,17 +452,29 @@ function DataPreviewDashboard() {
 }
 
 export default function DataPreviewPage() {
-  const [authenticated, setAuthenticated] = useState(false);
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
     // Check if already authenticated
-    const isAuth = localStorage.getItem("data-preview-auth") === "true";
-    setAuthenticated(isAuth);
+    const storedToken = localStorage.getItem(DATA_PREVIEW_TOKEN_KEY);
+    setSessionToken(storedToken);
     setChecking(false);
   }, []);
 
-  if (checking) {
+  const sessionStatus = useQuery(
+    api.dataPreview.validateDataPreviewSession,
+    sessionToken ? { sessionToken } : "skip"
+  );
+
+  useEffect(() => {
+    if (sessionStatus && !sessionStatus.valid) {
+      localStorage.removeItem(DATA_PREVIEW_TOKEN_KEY);
+      setSessionToken(null);
+    }
+  }, [sessionStatus]);
+
+  if (checking || (sessionToken && sessionStatus === undefined)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2Icon className="w-8 h-8 text-primary animate-spin" />
@@ -457,9 +482,9 @@ export default function DataPreviewPage() {
     );
   }
 
-  if (!authenticated) {
-    return <PasswordGate onAuthenticated={() => setAuthenticated(true)} />;
+  if (!sessionToken || sessionStatus?.valid === false) {
+    return <PasswordGate onAuthenticated={(token) => setSessionToken(token)} />;
   }
 
-  return <DataPreviewDashboard />;
+  return <DataPreviewDashboard sessionToken={sessionToken} />;
 }
