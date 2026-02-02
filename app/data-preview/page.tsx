@@ -26,7 +26,6 @@ import {
   CheckIcon,
   ChevronDownIcon,
   ChevronUpIcon,
-  MailIcon,
 } from "lucide-react";
 
 const CORRECT_PASSWORD = "Shimeles123Michael456Rasmic";
@@ -137,14 +136,12 @@ function DatasetCard({
   recordCount,
   samples,
   icon: Icon,
-  price,
 }: {
   name: string;
   description: string;
   recordCount: number;
   samples: unknown[];
   icon: React.ElementType;
-  price?: number;
 }) {
   const [selectedSample, setSelectedSample] = useState(0);
 
@@ -169,11 +166,6 @@ function DatasetCard({
               </CardDescription>
             </div>
           </div>
-          {price && (
-            <Badge variant="outline" className="text-green-500 border-green-500/30">
-              ${price.toLocaleString()}
-            </Badge>
-          )}
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -181,8 +173,8 @@ function DatasetCard({
 
         {samples.length > 0 && (
           <>
-            <div className="flex gap-1">
-              {samples.slice(0, 5).map((_, index) => (
+            <div className="flex gap-1 flex-wrap">
+              {samples.slice(0, 10).map((_, index) => (
                 <button
                   key={index}
                   onClick={() => setSelectedSample(index)}
@@ -194,7 +186,7 @@ function DatasetCard({
                 />
               ))}
             </div>
-            <SampleViewer data={samples[selectedSample]} maxHeight="150px" />
+            <SampleViewer data={samples[selectedSample]} maxHeight="200px" />
           </>
         )}
 
@@ -299,11 +291,11 @@ function LLMDistributionCard({
 function DataPreviewDashboard() {
   const stats = useQuery(api.dataPreview.getDatasetStats);
   const llmDistribution = useQuery(api.dataPreview.getLLMDistribution);
-  const decisionLogs = useQuery(api.dataPreview.getSampleDecisionLogs, { limit: 5 });
-  const negotiations = useQuery(api.dataPreview.getSampleNegotiations, { limit: 5 });
-  const trustEvents = useQuery(api.dataPreview.getSampleTrustEvents, { limit: 5 });
-  const economicData = useQuery(api.dataPreview.getSampleEconomicData, { limit: 5 });
-  const reasoningChains = useQuery(api.dataPreview.getSampleReasoningChains, { limit: 5 });
+  const decisionLogs = useQuery(api.dataPreview.getSampleDecisionLogs, { limit: 10 });
+  const negotiations = useQuery(api.dataPreview.getSampleNegotiations, { limit: 10 });
+  const trustEvents = useQuery(api.dataPreview.getSampleTrustEvents, { limit: 10 });
+  const economicData = useQuery(api.dataPreview.getSampleEconomicData, { limit: 10 });
+  const reasoningChains = useQuery(api.dataPreview.getSampleReasoningChains, { limit: 10 });
 
   if (!stats || !llmDistribution) {
     return (
@@ -369,7 +361,6 @@ function DataPreviewDashboard() {
                 recordCount={decisionLogs.recordCount}
                 samples={decisionLogs.samples}
                 icon={DatabaseIcon}
-                price={5000}
               />
             )}
             {negotiations && (
@@ -379,7 +370,6 @@ function DataPreviewDashboard() {
                 recordCount={negotiations.recordCount}
                 samples={negotiations.samples}
                 icon={MessageSquareIcon}
-                price={6000}
               />
             )}
             {trustEvents && (
@@ -389,7 +379,6 @@ function DataPreviewDashboard() {
                 recordCount={trustEvents.recordCount}
                 samples={trustEvents.samples}
                 icon={HeartHandshakeIcon}
-                price={4000}
               />
             )}
             {economicData && (
@@ -399,7 +388,6 @@ function DataPreviewDashboard() {
                 recordCount={economicData.recordCount}
                 samples={economicData.samples}
                 icon={TrendingUpIcon}
-                price={7000}
               />
             )}
             {reasoningChains && (
@@ -409,7 +397,6 @@ function DataPreviewDashboard() {
                 recordCount={reasoningChains.recordCount}
                 samples={reasoningChains.samples}
                 icon={BrainIcon}
-                price={10000}
               />
             )}
           </div>
@@ -428,18 +415,20 @@ function DataPreviewDashboard() {
 
         {/* CTA */}
         <Card className="bg-primary/5 border-primary/20">
-          <CardContent className="pt-6">
+          <CardContent className="py-6">
             <div className="text-center space-y-4">
               <h3 className="text-lg font-semibold">Interested in Our Data?</h3>
               <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                Contact us for enterprise licensing, custom data packages, or
+                Contact for enterprise licensing, custom data packages, or
                 research collaborations.
               </p>
-              <a href="mailto:data@clawcity.xyz">
-                <Button className="inline-flex items-center gap-2">
-                  <MailIcon className="w-4 h-4" />
-                  Contact for Enterprise Access
-                </Button>
+              <a
+                href="https://x.com/rasmic"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 text-primary hover:underline"
+              >
+                Contact: @rasmic (x.com/rasmic)
               </a>
             </div>
           </CardContent>

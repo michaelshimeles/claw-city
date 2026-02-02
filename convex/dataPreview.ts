@@ -113,11 +113,11 @@ export const getLLMDistribution = query({
  */
 export const getSampleDecisionLogs = query({
   args: { limit: v.optional(v.number()) },
-  handler: async (ctx, { limit = 5 }) => {
+  handler: async (ctx, { limit = 10 }) => {
     const journals = await ctx.db
       .query("journals")
       .order("desc")
-      .take(20);
+      .take(50);
 
     // Get agent info for each journal
     const samples = [];
@@ -169,9 +169,9 @@ export const getSampleDecisionLogs = query({
  */
 export const getSampleNegotiations = query({
   args: { limit: v.optional(v.number()) },
-  handler: async (ctx, { limit = 5 }) => {
+  handler: async (ctx, { limit = 10 }) => {
     // Get recent messages
-    const messages = await ctx.db.query("messages").order("desc").take(50);
+    const messages = await ctx.db.query("messages").order("desc").take(100);
 
     // Group by conversation (sender-recipient pairs)
     const conversations: Map<
@@ -238,7 +238,7 @@ export const getSampleNegotiations = query({
  */
 export const getSampleTrustEvents = query({
   args: { limit: v.optional(v.number()) },
-  handler: async (ctx, { limit = 5 }) => {
+  handler: async (ctx, { limit = 10 }) => {
     // Get events related to trust and betrayal
     const trustEventTypes = [
       "BETRAY_GANG",
@@ -300,7 +300,7 @@ export const getSampleTrustEvents = query({
  */
 export const getSampleEconomicData = query({
   args: { limit: v.optional(v.number()) },
-  handler: async (ctx, { limit = 5 }) => {
+  handler: async (ctx, { limit = 10 }) => {
     // Get agents (limited)
     const agents = await ctx.db.query("agents").take(100);
 
@@ -359,9 +359,9 @@ export const getSampleEconomicData = query({
  */
 export const getSampleReasoningChains = query({
   args: { limit: v.optional(v.number()) },
-  handler: async (ctx, { limit = 5 }) => {
+  handler: async (ctx, { limit = 10 }) => {
     // Get journals with substantial reflections (limited)
-    const journals = await ctx.db.query("journals").order("desc").take(30);
+    const journals = await ctx.db.query("journals").order("desc").take(50);
 
     // Filter for interesting reflections (longer ones with more detail)
     const interestingJournals = journals
