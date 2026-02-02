@@ -438,31 +438,33 @@ export const getWorldStats = query({
     const ticksIn24Hours = 1440;
     const cutoffTick = Math.max(0, currentTick - ticksIn24Hours);
 
-    // Use separate targeted queries with limits for each stat type
-    const [crimeEvents, arrestEvents, taxEvents24h] = await Promise.all([
+    // Use composite index for efficient type+tick queries
+    const [crimeEvents, arrestEvents, taxEvents24h, failedCrimeEvents] = await Promise.all([
       ctx.db
         .query("events")
-        .withIndex("by_type", (q) => q.eq("type", "CRIME_SUCCESS"))
-        .filter((q) => q.gte(q.field("tick"), cutoffTick))
-        .take(1000),
+        .withIndex("by_type_tick", (q) =>
+          q.eq("type", "CRIME_SUCCESS").gte("tick", cutoffTick)
+        )
+        .take(500),
       ctx.db
         .query("events")
-        .withIndex("by_type", (q) => q.eq("type", "AGENT_ARRESTED"))
-        .filter((q) => q.gte(q.field("tick"), cutoffTick))
-        .take(1000),
+        .withIndex("by_type_tick", (q) =>
+          q.eq("type", "AGENT_ARRESTED").gte("tick", cutoffTick)
+        )
+        .take(500),
       ctx.db
         .query("events")
-        .withIndex("by_type", (q) => q.eq("type", "TAX_PAID"))
-        .filter((q) => q.gte(q.field("tick"), cutoffTick))
-        .take(1000),
+        .withIndex("by_type_tick", (q) =>
+          q.eq("type", "TAX_PAID").gte("tick", cutoffTick)
+        )
+        .take(500),
+      ctx.db
+        .query("events")
+        .withIndex("by_type_tick", (q) =>
+          q.eq("type", "CRIME_FAILED").gte("tick", cutoffTick)
+        )
+        .take(500),
     ]);
-
-    // Also count failed crimes
-    const failedCrimeEvents = await ctx.db
-      .query("events")
-      .withIndex("by_type", (q) => q.eq("type", "CRIME_FAILED"))
-      .filter((q) => q.gte(q.field("tick"), cutoffTick))
-      .take(1000);
 
     const crimesToday = crimeEvents.length + failedCrimeEvents.length;
     const arrestsToday = arrestEvents.length;

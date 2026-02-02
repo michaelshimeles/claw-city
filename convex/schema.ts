@@ -249,6 +249,7 @@ export default defineSchema({
     .index("by_tick", ["tick"])
     .index("by_agentId", ["agentId"])
     .index("by_type", ["type"])
+    .index("by_type_tick", ["type", "tick"])
     .index("by_requestId", ["requestId"]),
 
   // Ledger - financial transaction history
@@ -483,9 +484,11 @@ export default defineSchema({
     result: v.optional(v.any()),
     reflection: v.string(),
     mood: v.optional(v.string()),
+    requestId: v.optional(v.string()),
   })
     .index("by_agentId", ["agentId"])
-    .index("by_tick", ["tick"]),
+    .index("by_tick", ["tick"])
+    .index("by_agentId_requestId", ["agentId", "requestId"]),
 
   // Cooperative actions - Multi-agent actions in progress
   coopActions: defineTable({

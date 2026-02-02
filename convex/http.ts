@@ -607,45 +607,18 @@ export const executeAgentAction = internalMutation({
       return { ok: false, error: "INTERNAL_ERROR" as const, message: "World not initialized" };
     }
 
-    // Check idempotency - look for existing action lock with this requestId
-    const existingLocks = await ctx.db
-      .query("actionLocks")
-      .withIndex("by_agentId_requestId", (q) => q.eq("agentId", agent._id))
-      .collect();
+    // Simple idempotency check via journals (no separate lock table)
+    const now = Date.now();
+    const existingJournal = await ctx.db
+      .query("journals")
+      .withIndex("by_agentId_requestId", (q) =>
+        q.eq("agentId", agent._id).eq("requestId", args.requestId)
+      )
+      .first();
 
-    const existingLock = existingLocks.find((l) => l.requestId === args.requestId);
-
-    if (existingLock) {
-      // Return cached result if available
-      if (existingLock.result) {
-        return existingLock.result;
-      }
+    if (existingJournal) {
       return { ok: false, error: "DUPLICATE_REQUEST" as const, message: ERROR_CODES.DUPLICATE_REQUEST };
     }
-
-    // Check if there's already an in-progress action for this agent (no result yet)
-    // This serializes actions per agent to prevent OCC conflicts
-    const now = Date.now();
-    const inProgressLock = existingLocks.find(
-      (l) => l.result === null && now - l.createdAt < 30000 // Within last 30 seconds
-    );
-
-    if (inProgressLock) {
-      return {
-        ok: false,
-        error: "ACTION_IN_PROGRESS" as const,
-        message: "Another action is currently processing. Please wait and retry.",
-      };
-    }
-
-    // Create action lock for idempotency
-    await ctx.db.insert("actionLocks", {
-      agentId: agent._id,
-      requestId: args.requestId,
-      createdAt: now,
-      expiresAt: now + DEFAULTS.actionLockExpirationMs,
-      result: null,
-    });
 
     // Execute the action
     const actionResult = await handleAction(
@@ -668,12 +641,12 @@ export const executeAgentAction = internalMutation({
       .take(100); // Check last 100 entries
 
     const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
-    const isDuplicate = recentJournals.some(
+    const isReflectionDuplicate = recentJournals.some(
       (j) => j.timestamp > fiveMinutesAgo && j.reflection === args.reflection
     );
 
-    // Only create journal entry if it's not a duplicate
-    if (!isDuplicate) {
+    // Only create journal entry if it's not a duplicate reflection
+    if (!isReflectionDuplicate) {
       await ctx.db.insert("journals", {
         agentId: agent._id,
         tick: world.tick,
@@ -685,6 +658,7 @@ export const executeAgentAction = internalMutation({
           : { success: false, error: actionResult.error, message: actionResult.message },
         reflection: args.reflection,
         mood: args.mood,
+        requestId: args.requestId,
       });
     }
 
@@ -711,17 +685,6 @@ export const executeAgentAction = internalMutation({
           }
         : null,
     };
-
-    // Update action lock with result for future duplicate requests
-    const locksToUpdate = await ctx.db
-      .query("actionLocks")
-      .withIndex("by_agentId_requestId", (q) => q.eq("agentId", agent._id))
-      .collect();
-
-    const lockToUpdate = locksToUpdate.find((l) => l.requestId === args.requestId);
-    if (lockToUpdate) {
-      await ctx.db.patch(lockToUpdate._id, { result: response });
-    }
 
     // Update rate limit counter (in same transaction to avoid OCC conflicts)
     const windowStart = now - RATE_LIMIT_WINDOW_MS;
@@ -1232,7 +1195,7 @@ http.route({
     });
 
     // Handle unauthorized error specially
-    if (!result.ok && result.error === "UNAUTHORIZED") {
+    if (!result.ok && "error" in result && result.error === "UNAUTHORIZED") {
       return errorResponse("UNAUTHORIZED", "Invalid API key", 401);
     }
 
