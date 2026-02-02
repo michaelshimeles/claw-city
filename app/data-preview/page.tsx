@@ -213,14 +213,15 @@ function StatCard({
   label,
   icon: Icon,
 }: {
-  value: number;
+  value: number | string;
   label: string;
   icon: React.ElementType;
 }) {
-  const formatValue = (num: number) => {
-    if (num >= 1000000) return (num / 1000000).toFixed(1) + "M";
-    if (num >= 1000) return (num / 1000).toFixed(1) + "K";
-    return num.toLocaleString();
+  const formatValue = (val: number | string) => {
+    if (typeof val === "string") return val;
+    if (val >= 1000000) return (val / 1000000).toFixed(1) + "M";
+    if (val >= 1000) return (val / 1000).toFixed(1) + "K";
+    return val.toLocaleString();
   };
 
   return (
@@ -336,17 +337,17 @@ function DataPreviewDashboard() {
         {/* Stats Grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <StatCard
-            value={stats.totalDecisions}
+            value={stats.totalDecisions as number | string}
             label="Decisions"
             icon={DatabaseIcon}
           />
           <StatCard
-            value={stats.totalMessages}
+            value={stats.totalMessages as number | string}
             label="Messages"
             icon={MessageSquareIcon}
           />
           <StatCard
-            value={stats.totalEvents}
+            value={stats.totalEvents as number | string}
             label="Events"
             icon={ActivityIcon}
           />

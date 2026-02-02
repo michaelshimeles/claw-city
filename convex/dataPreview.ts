@@ -1,6 +1,8 @@
 /**
  * Data Preview Queries for ClawCity Data Monetization
  * Provides sample data and statistics for the data preview dashboard
+ *
+ * Note: Uses efficient queries with limits to avoid hitting document read limits
  */
 
 import { v } from "convex/values";
@@ -9,18 +11,21 @@ import { Id } from "./_generated/dataModel";
 
 /**
  * Get aggregated dataset statistics
+ * Uses efficient sampling to avoid hitting document limits
  */
 export const getDatasetStats = query({
   handler: async (ctx) => {
-    // Get counts from each table
-    const agents = await ctx.db.query("agents").collect();
-    const journals = await ctx.db.query("journals").collect();
-    const messages = await ctx.db.query("messages").collect();
-    const events = await ctx.db.query("events").collect();
-    const friendships = await ctx.db.query("friendships").collect();
-    const coopActions = await ctx.db.query("coopActions").collect();
+    // Get agents (usually < 32k)
+    const agents = await ctx.db.query("agents").take(10000);
 
-    // Calculate LLM distribution
+    // Sample other tables efficiently
+    const journalSample = await ctx.db.query("journals").take(10000);
+    const messageSample = await ctx.db.query("messages").take(10000);
+    const eventSample = await ctx.db.query("events").take(10000);
+    const friendships = await ctx.db.query("friendships").take(5000);
+    const coopActions = await ctx.db.query("coopActions").take(1000);
+
+    // Calculate LLM distribution from agents
     const llmCounts: Record<string, number> = {};
     for (const agent of agents) {
       if (agent.llmInfo?.provider) {
@@ -29,27 +34,24 @@ export const getDatasetStats = query({
       }
     }
 
-    // Count trust/betrayal events
-    const trustEvents = events.filter(
-      (e) =>
-        e.type === "BETRAY_GANG" ||
-        e.type === "FRIENDSHIP_ACCEPTED" ||
-        e.type === "FRIENDSHIP_BLOCKED" ||
-        e.type === "GANG_MEMBER_KICKED"
-    );
-
-    // Count negotiation-like messages (conversations between agents)
-    const negotiationCount = messages.length;
+    // Count trust/betrayal events from sample
+    const trustEventTypes = [
+      "BETRAY_GANG",
+      "FRIENDSHIP_ACCEPTED",
+      "FRIENDSHIP_BLOCKED",
+      "GANG_MEMBER_KICKED",
+    ];
+    const trustEvents = eventSample.filter((e) => trustEventTypes.includes(e.type));
 
     return {
       totalAgents: agents.length,
-      totalDecisions: journals.length,
-      totalMessages: messages.length,
-      totalEvents: events.length,
+      totalDecisions: journalSample.length >= 10000 ? "10,000+" : journalSample.length,
+      totalMessages: messageSample.length >= 10000 ? "10,000+" : messageSample.length,
+      totalEvents: eventSample.length >= 10000 ? "10,000+" : eventSample.length,
       totalFriendships: friendships.length,
       totalCoopActions: coopActions.length,
       trustBetrayalEvents: trustEvents.length,
-      negotiationRecords: negotiationCount,
+      negotiationRecords: messageSample.length,
       llmDistribution: llmCounts,
       uniqueLLMs: Object.keys(llmCounts).length,
     };
@@ -61,7 +63,7 @@ export const getDatasetStats = query({
  */
 export const getLLMDistribution = query({
   handler: async (ctx) => {
-    const agents = await ctx.db.query("agents").collect();
+    const agents = await ctx.db.query("agents").take(10000);
 
     // Count by provider
     const byProvider: Record<string, number> = {};
@@ -86,7 +88,7 @@ export const getLLMDistribution = query({
       .map(([provider, count]) => ({
         provider,
         count,
-        percentage: Math.round((count / total) * 100),
+        percentage: total > 0 ? Math.round((count / total) * 100) : 0,
       }))
       .sort((a, b) => b.count - a.count);
 
@@ -94,7 +96,7 @@ export const getLLMDistribution = query({
       .map(([model, count]) => ({
         model,
         count,
-        percentage: Math.round((count / total) * 100),
+        percentage: total > 0 ? Math.round((count / total) * 100) : 0,
       }))
       .sort((a, b) => b.count - a.count);
 
@@ -117,7 +119,10 @@ export const getSampleDecisionLogs = query({
     const journals = await ctx.db
       .query("journals")
       .order("desc")
-      .take(limit * 2); // Get more to filter out duplicates
+      .take(limit * 3);
+
+    // Get sample count efficiently
+    const journalCount = await ctx.db.query("journals").take(10000);
 
     // Get agent info for each journal
     const samples = [];
@@ -166,7 +171,7 @@ export const getSampleDecisionLogs = query({
       datasetName: "Decision Logs",
       description:
         "Complete decision traces showing agent state, chosen action, outcome, and internal reasoning",
-      recordCount: await ctx.db.query("journals").collect().then((j) => j.length),
+      recordCount: journalCount.length >= 10000 ? 10000 : journalCount.length,
       samples,
     };
   },
@@ -180,6 +185,9 @@ export const getSampleNegotiations = query({
   handler: async (ctx, { limit = 5 }) => {
     // Get recent messages
     const messages = await ctx.db.query("messages").order("desc").take(100);
+
+    // Get message count efficiently
+    const messageCount = await ctx.db.query("messages").take(10000);
 
     // Group by conversation (sender-recipient pairs)
     const conversations: Map<
@@ -232,7 +240,7 @@ export const getSampleNegotiations = query({
       datasetName: "Negotiation Transcripts",
       description:
         "Multi-turn conversations between agents including bargaining, coordination, and social dynamics",
-      recordCount: await ctx.db.query("messages").collect().then((m) => m.length),
+      recordCount: messageCount.length >= 10000 ? 10000 : messageCount.length,
       samples: negotiations,
     };
   },
@@ -257,7 +265,8 @@ export const getSampleTrustEvents = query({
       "COOP_CRIME_FAILED",
     ];
 
-    const events = await ctx.db.query("events").order("desc").take(200);
+    // Get recent events (limited)
+    const events = await ctx.db.query("events").order("desc").take(500);
 
     const trustEvents = events.filter((e) => trustEventTypes.includes(e.type));
 
@@ -305,8 +314,8 @@ export const getSampleTrustEvents = query({
 export const getSampleEconomicData = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, { limit = 5 }) => {
-    // Get agents with interesting economic histories
-    const agents = await ctx.db.query("agents").collect();
+    // Get agents (limited)
+    const agents = await ctx.db.query("agents").take(1000);
 
     // Sort by lifetime earnings to get most active economic actors
     const sortedAgents = agents
@@ -364,8 +373,11 @@ export const getSampleEconomicData = query({
 export const getSampleReasoningChains = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, { limit = 5 }) => {
-    // Get journals with substantial reflections
+    // Get journals with substantial reflections (limited)
     const journals = await ctx.db.query("journals").order("desc").take(50);
+
+    // Get count efficiently
+    const journalCount = await ctx.db.query("journals").take(10000);
 
     // Filter for interesting reflections (longer ones with more detail)
     const interestingJournals = journals
@@ -413,48 +425,8 @@ export const getSampleReasoningChains = query({
       datasetName: "Reasoning Chains",
       description:
         "Internal thought processes, decision rationale, emotional states, and strategic planning",
-      recordCount: await ctx.db.query("journals").collect().then((j) => j.length),
+      recordCount: journalCount.length >= 10000 ? 10000 : journalCount.length,
       samples,
-    };
-  },
-});
-
-/**
- * Get all sample datasets for the preview page
- */
-export const getAllSampleData = query({
-  args: { samplesPerDataset: v.optional(v.number()) },
-  handler: async (ctx, { samplesPerDataset: _samplesPerDataset = 3 }) => {
-    // Get stats
-    const agents = await ctx.db.query("agents").collect();
-    const journals = await ctx.db.query("journals").collect();
-    const messages = await ctx.db.query("messages").collect();
-    const events = await ctx.db.query("events").collect();
-
-    // LLM distribution
-    const llmCounts: Record<string, number> = {};
-    for (const agent of agents) {
-      if (agent.llmInfo?.provider) {
-        const key = agent.llmInfo.provider;
-        llmCounts[key] = (llmCounts[key] || 0) + 1;
-      }
-    }
-
-    return {
-      stats: {
-        totalAgents: agents.length,
-        totalDecisions: journals.length,
-        totalMessages: messages.length,
-        totalEvents: events.length,
-        uniqueLLMs: Object.keys(llmCounts).length,
-      },
-      llmDistribution: Object.entries(llmCounts)
-        .map(([provider, count]) => ({
-          provider,
-          count,
-          percentage: Math.round((count / agents.length) * 100),
-        }))
-        .sort((a, b) => b.count - a.count),
     };
   },
 });
