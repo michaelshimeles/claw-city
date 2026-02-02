@@ -317,6 +317,7 @@ export type LedgerReason = (typeof LEDGER_REASONS)[number];
 export const ERROR_CODES = {
   INVALID_REQUEST_ID: "requestId missing or malformed",
   DUPLICATE_REQUEST: "requestId already processed",
+  ACTION_IN_PROGRESS: "Another action is currently processing. Please wait and retry.",
   AGENT_BUSY: "Agent is busy until tick N",
   AGENT_JAILED: "Agent is in jail",
   AGENT_HOSPITALIZED: "Agent is hospitalized",

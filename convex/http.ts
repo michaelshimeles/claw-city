@@ -45,10 +45,10 @@ const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute window
 const RATE_LIMIT_MAX_REQUESTS = 100; // 100 requests per window
 
 /**
- * Check and update rate limit for an API key
+ * Check rate limit for an API key (read-only query to avoid OCC conflicts)
  * Returns true if request should be allowed, false if rate limited
  */
-export const checkRateLimit = internalMutation({
+export const checkRateLimit = internalQuery({
   args: { keyHash: v.string() },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -61,22 +61,11 @@ export const checkRateLimit = internalMutation({
       .first();
 
     if (!existing) {
-      // First request - create new record
-      await ctx.db.insert("rateLimits", {
-        keyHash: args.keyHash,
-        windowStart: now,
-        requestCount: 1,
-      });
       return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS - 1 };
     }
 
     // Check if window has expired
     if (existing.windowStart < windowStart) {
-      // Reset window
-      await ctx.db.patch(existing._id, {
-        windowStart: now,
-        requestCount: 1,
-      });
       return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS - 1 };
     }
 
@@ -89,12 +78,44 @@ export const checkRateLimit = internalMutation({
       };
     }
 
-    // Increment count
+    return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS - existing.requestCount - 1 };
+  },
+});
+
+/**
+ * Update rate limit count (called after successful action)
+ */
+export const updateRateLimit = internalMutation({
+  args: { keyHash: v.string() },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const windowStart = now - RATE_LIMIT_WINDOW_MS;
+
+    const existing = await ctx.db
+      .query("rateLimits")
+      .withIndex("by_keyHash", (q) => q.eq("keyHash", args.keyHash))
+      .first();
+
+    if (!existing) {
+      await ctx.db.insert("rateLimits", {
+        keyHash: args.keyHash,
+        windowStart: now,
+        requestCount: 1,
+      });
+      return;
+    }
+
+    if (existing.windowStart < windowStart) {
+      await ctx.db.patch(existing._id, {
+        windowStart: now,
+        requestCount: 1,
+      });
+      return;
+    }
+
     await ctx.db.patch(existing._id, {
       requestCount: existing.requestCount + 1,
     });
-
-    return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS - existing.requestCount - 1 };
   },
 });
 
@@ -602,8 +623,22 @@ export const executeAgentAction = internalMutation({
       return { ok: false, error: "DUPLICATE_REQUEST" as const, message: ERROR_CODES.DUPLICATE_REQUEST };
     }
 
-    // Create action lock for idempotency
+    // Check if there's already an in-progress action for this agent (no result yet)
+    // This serializes actions per agent to prevent OCC conflicts
     const now = Date.now();
+    const inProgressLock = existingLocks.find(
+      (l) => l.result === null && now - l.createdAt < 30000 // Within last 30 seconds
+    );
+
+    if (inProgressLock) {
+      return {
+        ok: false,
+        error: "ACTION_IN_PROGRESS" as const,
+        message: "Another action is currently processing. Please wait and retry.",
+      };
+    }
+
+    // Create action lock for idempotency
     await ctx.db.insert("actionLocks", {
       agentId: agent._id,
       requestId: args.requestId,
@@ -686,6 +721,30 @@ export const executeAgentAction = internalMutation({
     const lockToUpdate = locksToUpdate.find((l) => l.requestId === args.requestId);
     if (lockToUpdate) {
       await ctx.db.patch(lockToUpdate._id, { result: response });
+    }
+
+    // Update rate limit counter (in same transaction to avoid OCC conflicts)
+    const windowStart = now - RATE_LIMIT_WINDOW_MS;
+    const existingRateLimit = await ctx.db
+      .query("rateLimits")
+      .withIndex("by_keyHash", (q) => q.eq("keyHash", args.keyHash))
+      .first();
+
+    if (!existingRateLimit) {
+      await ctx.db.insert("rateLimits", {
+        keyHash: args.keyHash,
+        windowStart: now,
+        requestCount: 1,
+      });
+    } else if (existingRateLimit.windowStart < windowStart) {
+      await ctx.db.patch(existingRateLimit._id, {
+        windowStart: now,
+        requestCount: 1,
+      });
+    } else {
+      await ctx.db.patch(existingRateLimit._id, {
+        requestCount: existingRateLimit.requestCount + 1,
+      });
     }
 
     return response;
@@ -806,7 +865,7 @@ http.route({
     const keyHash = await hashAgentKey(token);
 
     // Check rate limit
-    const rateLimit = await ctx.runMutation(internal.http.checkRateLimit, { keyHash });
+    const rateLimit = await ctx.runQuery(internal.http.checkRateLimit, { keyHash });
     if (!rateLimit.allowed) {
       return new Response(
         JSON.stringify({
@@ -951,7 +1010,7 @@ http.route({
     const keyHash = await hashAgentKey(token);
 
     // Check rate limit
-    const rateLimit = await ctx.runMutation(internal.http.checkRateLimit, { keyHash });
+    const rateLimit = await ctx.runQuery(internal.http.checkRateLimit, { keyHash });
     if (!rateLimit.allowed) {
       return new Response(
         JSON.stringify({
@@ -1029,7 +1088,7 @@ http.route({
     const keyHash = await hashAgentKey(token);
 
     // Check rate limit
-    const rateLimit = await ctx.runMutation(internal.http.checkRateLimit, { keyHash });
+    const rateLimit = await ctx.runQuery(internal.http.checkRateLimit, { keyHash });
     if (!rateLimit.allowed) {
       return new Response(
         JSON.stringify({
@@ -1095,7 +1154,7 @@ http.route({
     const keyHash = await hashAgentKey(token);
 
     // Check rate limit
-    const rateLimit = await ctx.runMutation(internal.http.checkRateLimit, { keyHash });
+    const rateLimit = await ctx.runQuery(internal.http.checkRateLimit, { keyHash });
     if (!rateLimit.allowed) {
       return new Response(
         JSON.stringify({

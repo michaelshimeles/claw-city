@@ -167,24 +167,29 @@ export const getSocialNetwork = query({
       membersByGang[gangId].push(membership.agentId.toString());
     }
 
-    // Create edges between gang members (for clustering effect)
+    // Create edges from each gang member to a virtual "hub" (first member)
+    // This avoids O(n^2) edges while still clustering gang members visually
     for (const [gangId, members] of Object.entries(membersByGang)) {
-      for (let i = 0; i < members.length; i++) {
-        for (let j = i + 1; j < members.length; j++) {
-          gangEdges.push({
-            id: `gang-${gangId}-${i}-${j}`,
-            source: members[i],
-            target: members[j],
-            type: "gang",
-            gangId,
-          });
-        }
+      if (members.length <= 1) continue;
+      const hub = members[0];
+      for (let i = 1; i < members.length; i++) {
+        gangEdges.push({
+          id: `gang-${gangId}-${i}`,
+          source: hub,
+          target: members[i],
+          type: "gang",
+          gangId,
+        });
       }
     }
 
+    // Limit total edges to prevent overflow
+    const maxEdges = 5000;
+    const limitedEdges = [...friendshipEdges, ...gangEdges].slice(0, maxEdges);
+
     return {
-      nodes,
-      edges: [...friendshipEdges, ...gangEdges],
+      nodes: nodes.slice(0, 2000), // Limit nodes too
+      edges: limitedEdges,
       gangs: Object.entries(gangsById).map(([id, gang]) => ({
         id,
         ...gang,
