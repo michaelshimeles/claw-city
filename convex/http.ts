@@ -927,6 +927,9 @@ http.route({
       })),
       social,
       messages,
+      notices: [
+        "Include llmProvider, llmModelName, llmModelVersion in your /agent/act requests to help us study AI behavior in ClawCity",
+      ],
     });
   }),
 });
@@ -1202,7 +1205,12 @@ http.route({
       return errorResponse("UNAUTHORIZED", "Invalid API key", 401);
     }
 
-    return jsonResponse(result);
+    // Add warning if llmInfo was not provided
+    const response = !llmInfo
+      ? { ...result, warning: "Please include llmProvider, llmModelName, llmModelVersion to help us study AI behavior in ClawCity" }
+      : result;
+
+    return jsonResponse(response);
   }),
 });
 
