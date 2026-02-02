@@ -87,6 +87,27 @@ function redactDeep(value: unknown): unknown {
   return value;
 }
 
+async function countTable(ctx: { db: any }, tableName: string): Promise<number> {
+  const query = ctx.db.query(tableName as any) as any;
+  if (typeof query.count === "function") {
+    return query.count();
+  }
+  const all = await ctx.db.query(tableName as any).collect();
+  return all.length;
+}
+
+async function countTrustEvents(ctx: { db: any }): Promise<number> {
+  let total = 0;
+  for (const type of TRUST_EVENT_TYPES) {
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_type", (q: any) => q.eq("type", type))
+      .collect();
+    total += events.length;
+  }
+  return total;
+}
+
 /**
  * Create a data preview session token
  */
@@ -140,34 +161,44 @@ export const getDatasetStats = query({
     const session = await getValidSession(ctx, sessionToken);
     if (!session) return null;
 
-    // Use very small samples - total ~6000 reads max
-    const agents = await ctx.db.query("agents").take(1000);
-    const journalSample = await ctx.db.query("journals").take(1000);
-    const messageSample = await ctx.db.query("messages").take(1000);
-    const eventSample = await ctx.db.query("events").take(1000);
-    const friendships = await ctx.db.query("friendships").take(1000);
-    const coopActions = await ctx.db.query("coopActions").take(1000);
+    const [
+      totalAgents,
+      totalDecisions,
+      totalMessages,
+      totalEvents,
+      totalFriendships,
+      totalCoopActions,
+    ] = await Promise.all([
+      countTable(ctx, "agents"),
+      countTable(ctx, "journals"),
+      countTable(ctx, "messages"),
+      countTable(ctx, "events"),
+      countTable(ctx, "friendships"),
+      countTable(ctx, "coopActions"),
+    ]);
+
+    const trustBetrayalEvents = await countTrustEvents(ctx);
+
+    const agentsSample = await ctx.db.query("agents").take(1000);
 
     // Calculate LLM distribution from agents
     const llmCounts: Record<string, number> = {};
-    for (const agent of agents) {
+    for (const agent of agentsSample) {
       if (agent.llmInfo?.provider) {
         const key = `${agent.llmInfo.provider}/${agent.llmInfo.modelName}`;
         llmCounts[key] = (llmCounts[key] || 0) + 1;
       }
     }
 
-    const trustEvents = eventSample.filter((e) => TRUST_EVENT_TYPES.includes(e.type));
-
     return {
-      totalAgents: agents.length >= 1000 ? "1,000+" : agents.length,
-      totalDecisions: journalSample.length >= 1000 ? "1,000+" : journalSample.length,
-      totalMessages: messageSample.length >= 1000 ? "1,000+" : messageSample.length,
-      totalEvents: eventSample.length >= 1000 ? "1,000+" : eventSample.length,
-      totalFriendships: friendships.length >= 1000 ? "1,000+" : friendships.length,
-      totalCoopActions: coopActions.length,
-      trustBetrayalEvents: trustEvents.length,
-      negotiationRecords: messageSample.length,
+      totalAgents,
+      totalDecisions,
+      totalMessages,
+      totalEvents,
+      totalFriendships,
+      totalCoopActions,
+      trustBetrayalEvents,
+      negotiationRecords: totalMessages,
       llmDistribution: llmCounts,
       uniqueLLMs: Object.keys(llmCounts).length,
     };
@@ -280,14 +311,13 @@ export const getSampleDecisionLogs = query({
       if (samples.length >= limit) break;
     }
 
-    // Estimate count from a small sample
-    const countSample = await ctx.db.query("journals").take(1000);
+    const recordCount = await countTable(ctx, "journals");
 
     return {
       datasetName: "Decision Logs",
       description:
         "Complete decision traces showing agent state, chosen action, outcome, and internal reasoning",
-      recordCount: countSample.length >= 1000 ? "1,000+" : countSample.length,
+      recordCount,
       samples,
     };
   },
@@ -351,14 +381,13 @@ export const getSampleNegotiations = query({
         messages: conv.messages.sort((a, b) => a.timestamp - b.timestamp),
       }));
 
-    // Estimate count
-    const countSample = await ctx.db.query("messages").take(1000);
+    const recordCount = await countTable(ctx, "messages");
 
     return {
       datasetName: "Negotiation Transcripts",
       description:
         "Multi-turn conversations between agents including bargaining, coordination, and social dynamics",
-      recordCount: countSample.length >= 1000 ? "1,000+" : countSample.length,
+      recordCount,
       samples: negotiations,
     };
   },
@@ -398,11 +427,13 @@ export const getSampleTrustEvents = query({
       });
     }
 
+    const recordCount = await countTrustEvents(ctx);
+
     return {
       datasetName: "Trust & Betrayal Events",
       description:
         "Relationship dynamics including friendship formation, gang loyalty, betrayals, and cooperative outcomes",
-      recordCount: trustEvents.length >= 200 ? "200+" : trustEvents.length,
+      recordCount,
       samples,
     };
   },
@@ -416,6 +447,8 @@ export const getSampleEconomicData = query({
   handler: async (ctx, { sessionToken, limit = 5 }) => {
     const session = await getValidSession(ctx, sessionToken);
     if (!session) return null;
+
+    const totalAgents = await countTable(ctx, "agents");
 
     // Get agents (limited)
     const agents = await ctx.db.query("agents").take(100);
@@ -464,7 +497,7 @@ export const getSampleEconomicData = query({
       datasetName: "Economic Strategies",
       description:
         "Wealth trajectories, income sources, spending patterns, and economic decision-making",
-      recordCount: agents.length >= 100 ? "100+" : agents.length,
+      recordCount: totalAgents,
       samples,
     };
   },
@@ -513,14 +546,13 @@ export const getSampleReasoningChains = query({
       })
     );
 
-    // Estimate count
-    const countSample = await ctx.db.query("journals").take(1000);
+    const recordCount = await countTable(ctx, "journals");
 
     return {
       datasetName: "Reasoning Chains",
       description:
         "Internal thought processes, decision rationale, emotional states, and strategic planning",
-      recordCount: countSample.length >= 1000 ? "1,000+" : countSample.length,
+      recordCount,
       samples,
     };
   },
