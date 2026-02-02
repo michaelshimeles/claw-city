@@ -15,15 +15,17 @@ type SkillRadarProps = {
 const SKILL_LABELS = ["Driving", "Negotiation", "Stealth", "Combat"];
 const SKILL_KEYS: (keyof Skills)[] = ["driving", "negotiation", "stealth", "combat"];
 
+const MAX_SKILL = 10; // Skills range from 1-10
+
 export function SkillRadar({ skills, size = 200 }: SkillRadarProps) {
   const center = size / 2;
   const maxRadius = (size - 40) / 2; // Leave room for labels
-  const levels = [25, 50, 75, 100]; // Grid levels
+  const levels = [2.5, 5, 7.5, 10]; // Grid levels (out of 10)
 
   // Calculate points for each skill (4 skills = 90 degree intervals)
   const getPoint = (skillValue: number, index: number) => {
     const angle = (index * 90 - 90) * (Math.PI / 180); // Start from top
-    const radius = (skillValue / 100) * maxRadius;
+    const radius = (skillValue / MAX_SKILL) * maxRadius;
     return {
       x: center + radius * Math.cos(angle),
       y: center + radius * Math.sin(angle),
@@ -66,7 +68,7 @@ export function SkillRadar({ skills, size = 200 }: SkillRadarProps) {
 
         {/* Axis lines */}
         {[0, 1, 2, 3].map((i) => {
-          const end = getPoint(100, i);
+          const end = getPoint(MAX_SKILL, i);
           return (
             <line
               key={i}
