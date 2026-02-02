@@ -26,10 +26,10 @@ const VISUAL_EVENT_TYPES = [
 export const getMapData = query({
   args: {},
   handler: async (ctx) => {
-    // Fetch all data in parallel
+    // Fetch all data in parallel (limit agents for performance)
     const [zones, agents, gangs, territories] = await Promise.all([
       ctx.db.query("zones").collect(),
-      ctx.db.query("agents").collect(),
+      ctx.db.query("agents").take(500), // Limit to 500 agents for map display
       ctx.db.query("gangs").collect(),
       ctx.db.query("territories").collect(),
     ]);
@@ -145,14 +145,12 @@ export const getRecentMapEvents = query({
 
     const minTick = Math.max(0, world.tick - ticksBack);
 
-    // Query each visual event type separately using by_type index for efficiency
-    // This avoids scanning all events and only reads relevant ones
+    // Query each visual event type separately using composite index for efficiency
     const perTypeLimit = Math.ceil(limit / VISUAL_EVENT_TYPES.length) + 5;
     const eventQueries = VISUAL_EVENT_TYPES.map((type) =>
       ctx.db
         .query("events")
-        .withIndex("by_type", (q) => q.eq("type", type))
-        .filter((q) => q.gte(q.field("tick"), minTick))
+        .withIndex("by_type_tick", (q) => q.eq("type", type).gte("tick", minTick))
         .order("desc")
         .take(perTypeLimit)
     );
@@ -176,11 +174,14 @@ export const getRecentMapEvents = query({
       };
     }
 
-    // Get agents for name lookup
-    const agents = await ctx.db.query("agents").collect();
+    // Get only the agents referenced in events (not all agents)
+    const agentIds = [...new Set(events.filter((e) => e.agentId).map((e) => e.agentId!))];
+    const agentDocs = await Promise.all(agentIds.slice(0, 50).map((id) => ctx.db.get(id)));
     const agentsById: Record<string, string> = {};
-    for (const agent of agents) {
-      agentsById[agent._id.toString()] = agent.name;
+    for (const agent of agentDocs) {
+      if (agent) {
+        agentsById[agent._id.toString()] = agent.name;
+      }
     }
 
     return events.map((event) => {
@@ -191,7 +192,7 @@ export const getRecentMapEvents = query({
         timestamp: event.timestamp,
         type: event.type,
         agentId: event.agentId,
-        agentName: event.agentId ? agentsById[event.agentId.toString()] : null,
+        agentName: event.agentId ? agentsById[event.agentId.toString()] ?? "Unknown" : null,
         zoneId: event.zoneId,
         zoneName: zone?.name || null,
         zoneMapCoords: zone?.mapCoords || null,
@@ -209,7 +210,7 @@ export const getZoneHeatStats = query({
   handler: async (ctx) => {
     const [zones, agents] = await Promise.all([
       ctx.db.query("zones").collect(),
-      ctx.db.query("agents").collect(),
+      ctx.db.query("agents").take(1000), // Limit for performance
     ]);
 
     // Calculate heat per zone

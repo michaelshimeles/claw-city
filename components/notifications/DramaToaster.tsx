@@ -2,7 +2,7 @@
 
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { XIcon } from "lucide-react";
 
@@ -24,14 +24,21 @@ const DRAMA_LEVEL_STYLES = {
 /**
  * Drama Toaster - shows toast notifications for exciting events
  * Subscribes to drama events and shows new ones as toasts
+ * Wrapped in memo to prevent unnecessary re-renders of parent components
  */
-export function DramaToaster() {
+export const DramaToaster = memo(function DramaToaster() {
   const events = useQuery(api.dashboard.getDramaEvents, { limit: 5 });
   const [toasts, setToasts] = useState<Toast[]>([]);
   const processedEventsRef = useRef<Set<string>>(new Set());
   const initializedRef = useRef(false);
 
-  // Process events when they change
+  // Stabilize event IDs to prevent unnecessary effect runs
+  const eventIds = useMemo(
+    () => events?.map((e) => e._id).join(",") ?? "",
+    [events]
+  );
+
+  // Process events when they change (using stable eventIds to reduce re-runs)
   useEffect(() => {
     if (!events || events.length === 0) return;
 
@@ -68,7 +75,7 @@ export function DramaToaster() {
     }));
 
     setToasts((prev) => [...newToasts, ...prev].slice(0, 5));
-  }, [events]);
+  }, [eventIds, events]);
 
   // Clean up expired toasts
   useEffect(() => {
@@ -115,4 +122,4 @@ export function DramaToaster() {
       ))}
     </div>
   );
-}
+});

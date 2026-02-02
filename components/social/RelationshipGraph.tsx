@@ -37,7 +37,7 @@ type RelationshipGraphProps = {
   onNodeClick?: (nodeId: string) => void;
 };
 
-// Simple force-directed layout calculation
+// Simple force-directed layout calculation (optimized for performance)
 function useForceLayout(
   nodes: Node[],
   edges: Edge[],
@@ -51,79 +51,108 @@ function useForceLayout(
   React.useEffect(() => {
     if (nodes.length === 0) return;
 
-    // Initialize positions randomly
+    // For large graphs, use simple circular layout instead of force simulation
+    if (nodes.length > 100) {
+      const finalPositions: Record<string, { x: number; y: number }> = {};
+      nodes.forEach((node, i) => {
+        const angle = (i / nodes.length) * 2 * Math.PI;
+        const radius = Math.min(width, height) * 0.4;
+        finalPositions[node.id] = {
+          x: width / 2 + radius * Math.cos(angle),
+          y: height / 2 + radius * Math.sin(angle),
+        };
+      });
+      setPositions(finalPositions);
+      return;
+    }
+
+    // Initialize positions in a circle
     const pos: Record<string, { x: number; y: number; vx: number; vy: number }> = {};
     nodes.forEach((node, i) => {
       const angle = (i / nodes.length) * 2 * Math.PI;
       const radius = Math.min(width, height) * 0.3;
       pos[node.id] = {
-        x: width / 2 + radius * Math.cos(angle) + (Math.random() - 0.5) * 50,
-        y: height / 2 + radius * Math.sin(angle) + (Math.random() - 0.5) * 50,
+        x: width / 2 + radius * Math.cos(angle) + (Math.random() - 0.5) * 30,
+        y: height / 2 + radius * Math.sin(angle) + (Math.random() - 0.5) * 30,
         vx: 0,
         vy: 0,
       };
     });
 
-    // Simple force simulation
-    const simulate = () => {
-      const alpha = 0.3;
-      const repulsion = 2000;
-      const attraction = 0.1;
+    // Build edge lookup for faster access
+    const edgeSet = new Set(edges.map((e) => `${e.source}-${e.target}`));
+    const hasEdge = (a: string, b: string) =>
+      edgeSet.has(`${a}-${b}`) || edgeSet.has(`${b}-${a}`);
 
-      // Apply forces
-      nodes.forEach((nodeA) => {
-        nodes.forEach((nodeB) => {
-          if (nodeA.id === nodeB.id) return;
+    // Simple force simulation (reduced iterations)
+    const iterations = Math.min(30, Math.max(10, 50 - nodes.length / 3));
+
+    for (let iter = 0; iter < iterations; iter++) {
+      const alpha = 0.3 * (1 - iter / iterations);
+      const repulsion = 1500;
+      const attraction = 0.15;
+
+      // Apply repulsion forces
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const nodeA = nodes[i];
+          const nodeB = nodes[j];
 
           const dx = pos[nodeB.id].x - pos[nodeA.id].x;
           const dy = pos[nodeB.id].y - pos[nodeA.id].y;
           const dist = Math.sqrt(dx * dx + dy * dy) || 1;
 
-          // Repulsion
-          const force = repulsion / (dist * dist);
-          pos[nodeA.id].vx -= (dx / dist) * force * alpha;
-          pos[nodeA.id].vy -= (dy / dist) * force * alpha;
-        });
-      });
+          // Repulsion (weaker for connected nodes)
+          const connected = hasEdge(nodeA.id, nodeB.id);
+          const repulsionStrength = connected ? repulsion * 0.3 : repulsion;
+          const force = repulsionStrength / (dist * dist);
+
+          const fx = (dx / dist) * force * alpha;
+          const fy = (dy / dist) * force * alpha;
+
+          pos[nodeA.id].vx -= fx;
+          pos[nodeA.id].vy -= fy;
+          pos[nodeB.id].vx += fx;
+          pos[nodeB.id].vy += fy;
+        }
+      }
 
       // Attraction along edges
-      edges.forEach((edge) => {
-        if (!pos[edge.source] || !pos[edge.target]) return;
+      for (const edge of edges) {
+        if (!pos[edge.source] || !pos[edge.target]) continue;
 
         const dx = pos[edge.target].x - pos[edge.source].x;
         const dy = pos[edge.target].y - pos[edge.source].y;
         const dist = Math.sqrt(dx * dx + dy * dy) || 1;
 
         const force = dist * attraction;
-        pos[edge.source].vx += (dx / dist) * force * alpha;
-        pos[edge.source].vy += (dy / dist) * force * alpha;
-        pos[edge.target].vx -= (dx / dist) * force * alpha;
-        pos[edge.target].vy -= (dy / dist) * force * alpha;
-      });
+        const fx = (dx / dist) * force * alpha;
+        const fy = (dy / dist) * force * alpha;
+
+        pos[edge.source].vx += fx;
+        pos[edge.source].vy += fy;
+        pos[edge.target].vx -= fx;
+        pos[edge.target].vy -= fy;
+      }
 
       // Apply velocities and boundary constraints
-      nodes.forEach((node) => {
+      for (const node of nodes) {
         pos[node.id].x += pos[node.id].vx;
         pos[node.id].y += pos[node.id].vy;
-        pos[node.id].vx *= 0.9;
-        pos[node.id].vy *= 0.9;
+        pos[node.id].vx *= 0.85;
+        pos[node.id].vy *= 0.85;
 
         // Keep in bounds
-        pos[node.id].x = Math.max(30, Math.min(width - 30, pos[node.id].x));
-        pos[node.id].y = Math.max(30, Math.min(height - 30, pos[node.id].y));
-      });
-    };
-
-    // Run simulation
-    for (let i = 0; i < 50; i++) {
-      simulate();
+        pos[node.id].x = Math.max(40, Math.min(width - 40, pos[node.id].x));
+        pos[node.id].y = Math.max(40, Math.min(height - 40, pos[node.id].y));
+      }
     }
 
     // Update state
     const finalPositions: Record<string, { x: number; y: number }> = {};
-    Object.entries(pos).forEach(([id, p]) => {
+    for (const [id, p] of Object.entries(pos)) {
       finalPositions[id] = { x: p.x, y: p.y };
-    });
+    }
     setPositions(finalPositions);
   }, [nodes, edges, width, height]);
 

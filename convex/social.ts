@@ -5,6 +5,7 @@
 
 import { query } from "./_generated/server";
 import { v } from "convex/values";
+import { Doc, Id } from "./_generated/dataModel";
 
 /**
  * Get all relationships for a specific agent
@@ -96,32 +97,50 @@ export const getAgentRelationships = query({
 });
 
 /**
- * Get full social network for graph visualization
+ * Get social network for graph visualization
+ * Only returns agents with connections (friendships or gang membership) to keep graph manageable
  */
 export const getSocialNetwork = query({
   args: {},
   handler: async (ctx) => {
-    // Get all agents (nodes)
-    const agents = await ctx.db.query("agents").collect();
-
-    // Get all accepted friendships (edges)
+    // Get friendships first (limited) - these define connected agents
     const friendships = await ctx.db
       .query("friendships")
       .withIndex("by_status", (q) => q.eq("status", "accepted"))
-      .collect();
+      .take(200);
 
-    // Get all gang memberships
-    const gangMembers = await ctx.db.query("gangMembers").collect();
+    // Get gang memberships (limited)
+    const gangMembers = await ctx.db.query("gangMembers").take(300);
 
-    // Get all gangs
-    const gangs = await ctx.db.query("gangs").collect();
+    // Collect all agent IDs that have connections
+    const connectedAgentIds = new Set<string>();
+    for (const f of friendships) {
+      connectedAgentIds.add(f.agent1Id.toString());
+      connectedAgentIds.add(f.agent2Id.toString());
+    }
+    for (const m of gangMembers) {
+      connectedAgentIds.add(m.agentId.toString());
+    }
+
+    // Limit to 150 agents max for performance
+    const limitedAgentIds = [...connectedAgentIds].slice(0, 150);
+    const agentIdSet = new Set(limitedAgentIds);
+
+    // Fetch only connected agents
+    const agents = await Promise.all(
+      limitedAgentIds.map((id) => ctx.db.get(id as Id<"agents">))
+    );
+    const validAgents = agents.filter((a): a is Doc<"agents"> => a !== null);
+
+    // Get gangs
+    const gangs = await ctx.db.query("gangs").take(50);
     const gangsById: Record<string, { name: string; tag: string; color: string }> = {};
     for (const gang of gangs) {
       gangsById[gang._id.toString()] = { name: gang.name, tag: gang.tag, color: gang.color };
     }
 
-    // Build nodes
-    const nodes = agents.map((agent) => {
+    // Build nodes (only connected agents)
+    const nodes = validAgents.map((agent) => {
       const gang = agent.gangId ? gangsById[agent.gangId.toString()] : null;
       return {
         id: agent._id.toString(),
@@ -138,17 +157,30 @@ export const getSocialNetwork = query({
       };
     });
 
-    // Build friendship edges
-    const friendshipEdges = friendships.map((f) => ({
-      id: f._id.toString(),
-      source: f.agent1Id.toString(),
-      target: f.agent2Id.toString(),
-      type: "friendship" as const,
-      strength: f.strength,
-      loyalty: f.loyalty,
-    }));
+    // Build friendship edges (only for agents in our set)
+    const friendshipEdges = friendships
+      .filter((f) => agentIdSet.has(f.agent1Id.toString()) && agentIdSet.has(f.agent2Id.toString()))
+      .map((f) => ({
+        id: f._id.toString(),
+        source: f.agent1Id.toString(),
+        target: f.agent2Id.toString(),
+        type: "friendship" as const,
+        strength: f.strength,
+        loyalty: f.loyalty,
+      }));
 
-    // Build gang membership edges (for clustering)
+    // Group members by gang
+    const membersByGang: Record<string, string[]> = {};
+    for (const membership of gangMembers) {
+      if (!agentIdSet.has(membership.agentId.toString())) continue;
+      const gangId = membership.gangId.toString();
+      if (!membersByGang[gangId]) {
+        membersByGang[gangId] = [];
+      }
+      membersByGang[gangId].push(membership.agentId.toString());
+    }
+
+    // Build gang edges (hub-and-spoke pattern)
     const gangEdges: Array<{
       id: string;
       source: string;
@@ -157,22 +189,10 @@ export const getSocialNetwork = query({
       gangId: string;
     }> = [];
 
-    // Group members by gang
-    const membersByGang: Record<string, string[]> = {};
-    for (const membership of gangMembers) {
-      const gangId = membership.gangId.toString();
-      if (!membersByGang[gangId]) {
-        membersByGang[gangId] = [];
-      }
-      membersByGang[gangId].push(membership.agentId.toString());
-    }
-
-    // Create edges from each gang member to a virtual "hub" (first member)
-    // This avoids O(n^2) edges while still clustering gang members visually
     for (const [gangId, members] of Object.entries(membersByGang)) {
       if (members.length <= 1) continue;
       const hub = members[0];
-      for (let i = 1; i < members.length; i++) {
+      for (let i = 1; i < Math.min(members.length, 10); i++) {
         gangEdges.push({
           id: `gang-${gangId}-${i}`,
           source: hub,
@@ -183,13 +203,9 @@ export const getSocialNetwork = query({
       }
     }
 
-    // Limit total edges to prevent overflow
-    const maxEdges = 5000;
-    const limitedEdges = [...friendshipEdges, ...gangEdges].slice(0, maxEdges);
-
     return {
-      nodes: nodes.slice(0, 2000), // Limit nodes too
-      edges: limitedEdges,
+      nodes,
+      edges: [...friendshipEdges, ...gangEdges].slice(0, 500),
       gangs: Object.entries(gangsById).map(([id, gang]) => ({
         id,
         ...gang,

@@ -4,7 +4,7 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useSpectate } from "@/lib/contexts/SpectateContext";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { XIcon, Eye } from "lucide-react";
 
@@ -28,12 +28,16 @@ const SPECTATE_LEVEL_STYLES = {
  * SpectateToaster - Shows toast notifications for new events from followed agents
  * Positioned bottom-left to differentiate from DramaToaster (bottom-right)
  * Uses blue color scheme vs DramaToaster's yellow/red
+ * Wrapped in memo to prevent unnecessary re-renders
  */
-export function SpectateToaster() {
+export const SpectateToaster = memo(function SpectateToaster() {
   const { followedAgentIds, followedCount } = useSpectate();
 
-  // Convert string IDs to proper Convex IDs for the query
-  const agentIds = followedAgentIds as Id<"agents">[];
+  // Memoize agent IDs to prevent query args from changing
+  const agentIds = useMemo(
+    () => followedAgentIds as Id<"agents">[],
+    [followedAgentIds]
+  );
 
   const events = useQuery(
     api.dashboard.getFollowedAgentEvents,
@@ -43,6 +47,12 @@ export function SpectateToaster() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const processedEventsRef = useRef<Set<string>>(new Set());
   const initializedRef = useRef(false);
+
+  // Stabilize event IDs to prevent unnecessary effect runs
+  const eventIds = useMemo(
+    () => events?.map((e) => e._id).join(",") ?? "",
+    [events]
+  );
 
   // Process events when they change
   useEffect(() => {
@@ -80,7 +90,7 @@ export function SpectateToaster() {
     }));
 
     setToasts((prev) => [...newToasts, ...prev].slice(0, 5));
-  }, [events]);
+  }, [eventIds, events]);
 
   // Clean up expired toasts
   useEffect(() => {
@@ -132,4 +142,4 @@ export function SpectateToaster() {
       ))}
     </div>
   );
-}
+});
