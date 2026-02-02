@@ -129,6 +129,16 @@ export const getTopAgentsByCash = query({
     // Resolve zone names for each agent
     const agentsWithZones = await Promise.all(
       topAgents.map(async (agent) => {
+        if (!agent.locationZoneId) {
+          return {
+            _id: agent._id,
+            name: agent.name,
+            cash: agent.cash,
+            status: agent.status,
+            locationZoneName: "Unknown",
+          };
+        }
+
         const zone = await ctx.db.get(agent.locationZoneId);
         return {
           _id: agent._id,
@@ -415,6 +425,10 @@ export const getWorldStats = query({
       heatByZone[zone._id.toString()] = { total: 0, count: 0, name: zone.name };
     }
     for (const agent of agents) {
+      if (!agent.locationZoneId) {
+        continue;
+      }
+
       const zoneId = agent.locationZoneId.toString();
       if (heatByZone[zoneId]) {
         heatByZone[zoneId].total += agent.heat;
