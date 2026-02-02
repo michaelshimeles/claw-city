@@ -15,15 +15,14 @@ import { Id } from "./_generated/dataModel";
  */
 export const getDatasetStats = query({
   handler: async (ctx) => {
-    // Get agents (usually < 32k)
-    const agents = await ctx.db.query("agents").take(10000);
-
-    // Sample other tables efficiently
-    const journalSample = await ctx.db.query("journals").take(10000);
-    const messageSample = await ctx.db.query("messages").take(10000);
-    const eventSample = await ctx.db.query("events").take(10000);
-    const friendships = await ctx.db.query("friendships").take(5000);
-    const coopActions = await ctx.db.query("coopActions").take(1000);
+    // Use small samples to stay under 32k limit
+    // Total reads: 5000 + 5000 + 5000 + 5000 + 1000 + 500 = 21,500
+    const agents = await ctx.db.query("agents").take(5000);
+    const journalSample = await ctx.db.query("journals").take(5000);
+    const messageSample = await ctx.db.query("messages").take(5000);
+    const eventSample = await ctx.db.query("events").take(5000);
+    const friendships = await ctx.db.query("friendships").take(1000);
+    const coopActions = await ctx.db.query("coopActions").take(500);
 
     // Calculate LLM distribution from agents
     const llmCounts: Record<string, number> = {};
@@ -44,10 +43,10 @@ export const getDatasetStats = query({
     const trustEvents = eventSample.filter((e) => trustEventTypes.includes(e.type));
 
     return {
-      totalAgents: agents.length,
-      totalDecisions: journalSample.length >= 10000 ? "10,000+" : journalSample.length,
-      totalMessages: messageSample.length >= 10000 ? "10,000+" : messageSample.length,
-      totalEvents: eventSample.length >= 10000 ? "10,000+" : eventSample.length,
+      totalAgents: agents.length >= 5000 ? "5,000+" : agents.length,
+      totalDecisions: journalSample.length >= 5000 ? "5,000+" : journalSample.length,
+      totalMessages: messageSample.length >= 5000 ? "5,000+" : messageSample.length,
+      totalEvents: eventSample.length >= 5000 ? "5,000+" : eventSample.length,
       totalFriendships: friendships.length,
       totalCoopActions: coopActions.length,
       trustBetrayalEvents: trustEvents.length,
@@ -63,7 +62,7 @@ export const getDatasetStats = query({
  */
 export const getLLMDistribution = query({
   handler: async (ctx) => {
-    const agents = await ctx.db.query("agents").take(10000);
+    const agents = await ctx.db.query("agents").take(5000);
 
     // Count by provider
     const byProvider: Record<string, number> = {};
@@ -122,7 +121,7 @@ export const getSampleDecisionLogs = query({
       .take(limit * 3);
 
     // Get sample count efficiently
-    const journalCount = await ctx.db.query("journals").take(10000);
+    const journalCount = await ctx.db.query("journals").take(5000);
 
     // Get agent info for each journal
     const samples = [];
@@ -171,7 +170,7 @@ export const getSampleDecisionLogs = query({
       datasetName: "Decision Logs",
       description:
         "Complete decision traces showing agent state, chosen action, outcome, and internal reasoning",
-      recordCount: journalCount.length >= 10000 ? 10000 : journalCount.length,
+      recordCount: journalCount.length >= 5000 ? 5000 : journalCount.length,
       samples,
     };
   },
@@ -187,7 +186,7 @@ export const getSampleNegotiations = query({
     const messages = await ctx.db.query("messages").order("desc").take(100);
 
     // Get message count efficiently
-    const messageCount = await ctx.db.query("messages").take(10000);
+    const messageCount = await ctx.db.query("messages").take(5000);
 
     // Group by conversation (sender-recipient pairs)
     const conversations: Map<
@@ -240,7 +239,7 @@ export const getSampleNegotiations = query({
       datasetName: "Negotiation Transcripts",
       description:
         "Multi-turn conversations between agents including bargaining, coordination, and social dynamics",
-      recordCount: messageCount.length >= 10000 ? 10000 : messageCount.length,
+      recordCount: messageCount.length >= 5000 ? 5000 : messageCount.length,
       samples: negotiations,
     };
   },
@@ -377,7 +376,7 @@ export const getSampleReasoningChains = query({
     const journals = await ctx.db.query("journals").order("desc").take(50);
 
     // Get count efficiently
-    const journalCount = await ctx.db.query("journals").take(10000);
+    const journalCount = await ctx.db.query("journals").take(5000);
 
     // Filter for interesting reflections (longer ones with more detail)
     const interestingJournals = journals
@@ -425,7 +424,7 @@ export const getSampleReasoningChains = query({
       datasetName: "Reasoning Chains",
       description:
         "Internal thought processes, decision rationale, emotional states, and strategic planning",
-      recordCount: journalCount.length >= 10000 ? 10000 : journalCount.length,
+      recordCount: journalCount.length >= 5000 ? 5000 : journalCount.length,
       samples,
     };
   },
