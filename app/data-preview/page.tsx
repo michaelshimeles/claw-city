@@ -117,18 +117,14 @@ function LLMDistributionCard({
   distribution: Array<{ provider: string; count: number; percentage: number }>;
   totalAgents: number;
 }) {
+  // Don't show if no data or if 100% unknown
   if (distribution.length === 0) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">LLM Distribution</CardTitle>
-          <CardDescription>
-            No LLM data available yet. As agents register with LLM information,
-            the distribution will appear here.
-          </CardDescription>
-        </CardHeader>
-      </Card>
-    );
+    return null;
+  }
+
+  const knownProviders = distribution.filter((d) => d.provider !== "unknown");
+  if (knownProviders.length === 0) {
+    return null;
   }
 
   return (
@@ -293,6 +289,12 @@ function DataPreviewDashboard({ sessionToken }: { sessionToken: string }) {
             icon={ActivityIcon}
           />
         </div>
+
+        {/* LLM Distribution */}
+        <LLMDistributionCard
+          distribution={llmDistribution.byProvider}
+          totalAgents={llmDistribution.totalAgents}
+        />
 
         {/* Dataset Tabs */}
         <div>
