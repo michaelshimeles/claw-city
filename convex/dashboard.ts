@@ -73,7 +73,9 @@ const ECONOMIC_EVENTS = [
 export const getAgentStats = query({
   args: {},
   handler: async (ctx) => {
-    const agents = await ctx.db.query("agents").collect();
+    const allAgents = await ctx.db.query("agents").collect();
+    // Filter out banned agents
+    const agents = allAgents.filter((a) => !a.bannedAt);
 
     const total = agents.length;
     let idle = 0;
@@ -119,7 +121,9 @@ export const getTopAgentsByCash = query({
   handler: async (ctx, args) => {
     const limit = args.limit ?? 5;
 
-    const agents = await ctx.db.query("agents").collect();
+    const allAgents = await ctx.db.query("agents").collect();
+    // Filter out banned agents
+    const agents = allAgents.filter((a) => !a.bannedAt);
 
     // Sort by cash descending and take top N
     const topAgents = agents
@@ -399,7 +403,7 @@ function formatEventDescription(
 export const getWorldStats = query({
   args: {},
   handler: async (ctx) => {
-    const [world, agents, gangs, territories, coopActions, government] = await Promise.all([
+    const [world, allAgents, allGangs, territories, coopActions, government] = await Promise.all([
       ctx.db.query("world").first(),
       ctx.db.query("agents").collect(),
       ctx.db.query("gangs").collect(),
@@ -410,6 +414,10 @@ export const getWorldStats = query({
         .collect(),
       ctx.db.query("government").first(),
     ]);
+
+    // Filter out banned agents and disbanded gangs
+    const agents = allAgents.filter((a) => !a.bannedAt);
+    const gangs = allGangs.filter((g) => !g.disbandedAt);
 
     const currentTick = world?.tick ?? 0;
 

@@ -30,7 +30,9 @@ export const getZones = query({
     const zones = await ctx.db.query("zones").collect();
 
     // Get all agents, jobs, and businesses for counting
-    const agents = await ctx.db.query("agents").collect();
+    const allAgents = await ctx.db.query("agents").collect();
+    // Filter out banned agents
+    const agents = allAgents.filter((a) => !a.bannedAt);
     const jobs = await ctx.db
       .query("jobs")
       .filter((q) => q.eq(q.field("active"), true))
@@ -81,11 +83,12 @@ export const getZoneDetail = query({
       return null;
     }
 
-    // Get agents in this zone
-    const agents = await ctx.db
+    // Get agents in this zone (excluding banned)
+    const allAgents = await ctx.db
       .query("agents")
       .withIndex("by_locationZoneId", (q) => q.eq("locationZoneId", args.zoneId))
       .collect();
+    const agents = allAgents.filter((a) => !a.bannedAt);
 
     // Get active jobs in this zone
     const jobs = await ctx.db
@@ -170,7 +173,7 @@ export const getZoneContext = query({
     }
 
     // Get all data for this zone
-    const [agents, businesses, jobs, coopActions, territories, gangs] =
+    const [allAgents, businesses, jobs, coopActions, territories, allGangs] =
       await Promise.all([
         ctx.db
           .query("agents")
@@ -198,6 +201,10 @@ export const getZoneContext = query({
           .collect(),
         ctx.db.query("gangs").collect(),
       ]);
+
+    // Filter out banned agents and disbanded gangs
+    const agents = allAgents.filter((a) => !a.bannedAt);
+    const gangs = allGangs.filter((g) => !g.disbandedAt);
 
     // Build gang lookup
     const gangsById: Record<

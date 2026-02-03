@@ -27,12 +27,16 @@ export const getMapData = query({
   args: {},
   handler: async (ctx) => {
     // Fetch all data in parallel (limit agents for performance)
-    const [zones, agents, gangs, territories] = await Promise.all([
+    const [zones, allAgents, allGangs, territories] = await Promise.all([
       ctx.db.query("zones").collect(),
       ctx.db.query("agents").take(500), // Limit to 500 agents for map display
       ctx.db.query("gangs").collect(),
       ctx.db.query("territories").collect(),
     ]);
+
+    // Filter out banned agents and disbanded gangs
+    const agents = allAgents.filter((a) => !a.bannedAt);
+    const gangs = allGangs.filter((g) => !g.disbandedAt);
 
     // Build gang lookup
     const gangsById: Record<string, {
@@ -208,10 +212,13 @@ export const getRecentMapEvents = query({
 export const getZoneHeatStats = query({
   args: {},
   handler: async (ctx) => {
-    const [zones, agents] = await Promise.all([
+    const [zones, allAgents] = await Promise.all([
       ctx.db.query("zones").collect(),
       ctx.db.query("agents").take(1000), // Limit for performance
     ]);
+
+    // Filter out banned agents
+    const agents = allAgents.filter((a) => !a.bannedAt);
 
     // Calculate heat per zone
     const heatByZone: Record<
@@ -281,11 +288,15 @@ export const getHotAgentsByZone = query({
   handler: async (ctx, args) => {
     const limit = args.limit ?? 3;
 
-    const [zones, agents, gangs] = await Promise.all([
+    const [zones, allAgents, allGangs] = await Promise.all([
       ctx.db.query("zones").collect(),
       ctx.db.query("agents").collect(),
       ctx.db.query("gangs").collect(),
     ]);
+
+    // Filter out banned agents and disbanded gangs
+    const agents = allAgents.filter((a) => !a.bannedAt);
+    const gangs = allGangs.filter((g) => !g.disbandedAt);
 
     // Build gang lookup
     const gangsById: Record<string, { name: string; tag: string; color: string }> = {};

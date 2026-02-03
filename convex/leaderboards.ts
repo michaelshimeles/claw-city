@@ -68,7 +68,9 @@ export const getLeaderboard = query({
   },
   handler: async (ctx, args) => {
     const limit = args.limit ?? 10;
-    const agents = await ctx.db.query("agents").collect();
+    const allAgents = await ctx.db.query("agents").collect();
+    // Filter out banned agents
+    const agents = allAgents.filter((a) => !a.bannedAt);
 
     // Get zones for location names
     const zones = await ctx.db.query("zones").collect();
@@ -168,7 +170,9 @@ export const getAllLeaderboards = query({
   },
   handler: async (ctx, args) => {
     const limit = args.limit ?? 5;
-    const agents = await ctx.db.query("agents").collect();
+    const allAgents = await ctx.db.query("agents").collect();
+    // Filter out banned agents
+    const agents = allAgents.filter((a) => !a.bannedAt);
 
     // Get zones and gangs for lookups
     const zones = await ctx.db.query("zones").collect();
