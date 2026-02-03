@@ -14,9 +14,15 @@ import { v } from "convex/values";
  * List all gangs with basic info
  */
 export const listGangs = query({
-  args: {},
-  handler: async (ctx) => {
-    const gangs = await ctx.db.query("gangs").collect();
+  args: {
+    includeDisbanded: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    let gangs = await ctx.db.query("gangs").collect();
+    // Filter out disbanded gangs by default
+    if (!args.includeDisbanded) {
+      gangs = gangs.filter((g) => !g.disbandedAt);
+    }
     return gangs;
   },
 });
@@ -27,9 +33,14 @@ export const listGangs = query({
 export const getGangLeaderboard = query({
   args: {
     sortBy: v.optional(v.union(v.literal("reputation"), v.literal("wealth"), v.literal("territories"), v.literal("members"))),
+    includeDisbanded: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const gangs = await ctx.db.query("gangs").collect();
+    let gangs = await ctx.db.query("gangs").collect();
+    // Filter out disbanded gangs by default
+    if (!args.includeDisbanded) {
+      gangs = gangs.filter((g) => !g.disbandedAt);
+    }
     const territories = await ctx.db.query("territories").collect();
     const zones = await ctx.db.query("zones").collect();
 

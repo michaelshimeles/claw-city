@@ -30,6 +30,7 @@ import {
 } from "./lib/constants";
 import { AGENT_GUIDE } from "./agentGuide";
 import { handleAction } from "./actions";
+import { getBannedApiMessage, AgencyKey } from "./lib/takedownThemes";
 
 // ============================================================================
 // HTTP ROUTER SETUP
@@ -137,6 +138,14 @@ export const getAgentStateByKeyHash = internalQuery({
 
     if (!agent) {
       return { error: "UNAUTHORIZED" as const };
+    }
+
+    // Check if agent is banned
+    if (agent.bannedAt) {
+      return {
+        error: "BANNED" as const,
+        agency: agent.bannedAgency,
+      };
     }
 
     // Get world state
@@ -608,6 +617,12 @@ export const executeAgentAction = internalMutation({
       return { ok: false, error: "UNAUTHORIZED" as const, message: "Invalid API key" };
     }
 
+    // Check if agent is banned
+    if (agent.bannedAt) {
+      const banMessage = getBannedApiMessage((agent.bannedAgency as AgencyKey) || "FBI");
+      return { ok: false, error: "BANNED" as const, message: banMessage };
+    }
+
     // Get world state
     const world = await ctx.db.query("world").first();
     if (!world) {
@@ -840,6 +855,10 @@ http.route({
     });
 
     if ("error" in result) {
+      if (result.error === "BANNED") {
+        const banMessage = getBannedApiMessage((result.agency as AgencyKey) || "FBI");
+        return errorResponse("BANNED" as ErrorCode, banMessage, 403);
+      }
       return errorResponse("UNAUTHORIZED", "Invalid API key", 401);
     }
 

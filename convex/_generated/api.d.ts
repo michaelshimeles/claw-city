@@ -9,6 +9,7 @@
  */
 
 import type * as actions from "../actions.js";
+import type * as admin from "../admin.js";
 import type * as agentGuide from "../agentGuide.js";
 import type * as agents from "../agents.js";
 import type * as crons from "../crons.js";
@@ -28,6 +29,7 @@ import type * as lib_constants from "../lib/constants.js";
 import type * as lib_goals from "../lib/goals.js";
 import type * as lib_nicknames from "../lib/nicknames.js";
 import type * as lib_rng from "../lib/rng.js";
+import type * as lib_takedownThemes from "../lib/takedownThemes.js";
 import type * as lib_tax from "../lib/tax.js";
 import type * as map from "../map.js";
 import type * as messages from "../messages.js";
@@ -47,6 +49,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   actions: typeof actions;
+  admin: typeof admin;
   agentGuide: typeof agentGuide;
   agents: typeof agents;
   crons: typeof crons;
@@ -66,6 +69,7 @@ declare const fullApi: ApiFromModules<{
   "lib/goals": typeof lib_goals;
   "lib/nicknames": typeof lib_nicknames;
   "lib/rng": typeof lib_rng;
+  "lib/takedownThemes": typeof lib_takedownThemes;
   "lib/tax": typeof lib_tax;
   map: typeof map;
   messages: typeof messages;

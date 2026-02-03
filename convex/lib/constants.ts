@@ -273,6 +273,10 @@ export const EVENT_TYPES = [
   "VEHICLE_STEAL_FAILED",
   "CONTRACT_ACCEPTED",
   "CONTRACT_COMPLETED",
+  // Government takedown events
+  "GOVERNMENT_TAKEDOWN",
+  "GOVERNMENT_RELEASE",
+  "GANG_REINSTATED",
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -334,6 +338,7 @@ export const ERROR_CODES = {
   BUSINESS_CLOSED: "Business is closed",
   OUT_OF_STOCK: "Business doesn't have item",
   UNAUTHORIZED: "Invalid or missing API key",
+  BANNED: "Account suspended by federal authorities",
   INTERNAL_ERROR: "An internal error occurred",
   // Social error codes
   INVALID_AGENT: "Target agent does not exist",

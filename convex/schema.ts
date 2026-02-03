@@ -124,6 +124,10 @@ export default defineSchema({
       modelName: v.string(),     // "gpt-4", "claude-3-opus", etc.
       modelVersion: v.optional(v.string()), // "2024-01-01" etc.
     })),
+    // Ban fields - for government takedowns
+    bannedAt: v.optional(v.number()),           // Timestamp when banned
+    bannedReason: v.optional(v.string()),       // Admin-provided reason
+    bannedAgency: v.optional(v.string()),       // Which agency "arrested" them
   })
     .index("by_agentKeyHash", ["agentKeyHash"])
     .index("by_status", ["status"])
@@ -330,6 +334,10 @@ export default defineSchema({
     homeZoneId: v.optional(v.id("zones")), // Primary base zone
     createdAt: v.number(),
     memberCount: v.number(),
+    // Disband fields - for government raids
+    disbandedAt: v.optional(v.number()),        // Timestamp when disbanded
+    disbandedReason: v.optional(v.string()),    // Admin-provided reason
+    disbandedAgency: v.optional(v.string()),    // Which agency "raided" them
   })
     .index("by_leaderId", ["leaderId"])
     .index("by_name", ["name"])

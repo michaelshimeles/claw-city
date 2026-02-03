@@ -97,7 +97,7 @@ export default function AgentsPage() {
   const zones = useQuery(api.zones.listZones);
 
   // Query gangs for gang badges
-  const gangs = useQuery(api.gangs.listGangs);
+  const gangs = useQuery(api.gangs.listGangs, {});
 
   // Create zone lookup map
   const zoneMap = React.useMemo(() => {

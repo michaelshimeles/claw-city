@@ -66,27 +66,43 @@ export const listAgents = query({
     zoneId: v.optional(v.id("zones")),
     limit: v.optional(v.number()),
     cursor: v.optional(v.string()),
+    includeBanned: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const limit = Math.min(args.limit ?? 50, 100);
     let agents;
 
     // Get total count of all agents
-    const allAgents = await ctx.db.query("agents").collect();
+    let allAgents = await ctx.db.query("agents").collect();
+
+    // Filter out banned agents by default
+    if (!args.includeBanned) {
+      allAgents = allAgents.filter((a) => !a.bannedAt);
+    }
     const totalCount = allAgents.length;
 
     if (args.status) {
       agents = await ctx.db
         .query("agents")
         .withIndex("by_status", (q) => q.eq("status", args.status!))
-        .take(limit + 1);
+        .take(500); // Take more to account for filtering
+      // Filter out banned agents
+      if (!args.includeBanned) {
+        agents = agents.filter((a) => !a.bannedAt);
+      }
+      agents = agents.slice(0, limit + 1);
     } else if (args.zoneId) {
       agents = await ctx.db
         .query("agents")
         .withIndex("by_locationZoneId", (q) =>
           q.eq("locationZoneId", args.zoneId!)
         )
-        .take(limit + 1);
+        .take(500);
+      // Filter out banned agents
+      if (!args.includeBanned) {
+        agents = agents.filter((a) => !a.bannedAt);
+      }
+      agents = agents.slice(0, limit + 1);
     } else {
       agents = allAgents.slice(0, limit + 1);
     }
@@ -130,6 +146,7 @@ export const listAgentsAfterCursor = query({
     zoneId: v.optional(v.id("zones")),
     limit: v.optional(v.number()),
     afterId: v.id("agents"),
+    includeBanned: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const limit = Math.min(args.limit ?? 50, 100);
@@ -144,24 +161,36 @@ export const listAgentsAfterCursor = query({
 
     if (args.status) {
       // Query all with status, then filter to those after cursor
-      const allAgents = await ctx.db
+      let allAgents = await ctx.db
         .query("agents")
         .withIndex("by_status", (q) => q.eq("status", args.status!))
         .take(500);
+      // Filter out banned agents
+      if (!args.includeBanned) {
+        allAgents = allAgents.filter((a) => !a.bannedAt);
+      }
       const cursorIndex = allAgents.findIndex((a) => a._id === args.afterId);
       agents = cursorIndex >= 0 ? allAgents.slice(cursorIndex + 1, cursorIndex + 1 + limit + 1) : [];
     } else if (args.zoneId) {
-      const allAgents = await ctx.db
+      let allAgents = await ctx.db
         .query("agents")
         .withIndex("by_locationZoneId", (q) =>
           q.eq("locationZoneId", args.zoneId!)
         )
         .take(500);
+      // Filter out banned agents
+      if (!args.includeBanned) {
+        allAgents = allAgents.filter((a) => !a.bannedAt);
+      }
       const cursorIndex = allAgents.findIndex((a) => a._id === args.afterId);
       agents = cursorIndex >= 0 ? allAgents.slice(cursorIndex + 1, cursorIndex + 1 + limit + 1) : [];
     } else {
       // Use creation time ordering and skip past cursor
-      const allAgents = await ctx.db.query("agents").take(500);
+      let allAgents = await ctx.db.query("agents").take(500);
+      // Filter out banned agents
+      if (!args.includeBanned) {
+        allAgents = allAgents.filter((a) => !a.bannedAt);
+      }
       const cursorIndex = allAgents.findIndex((a) => a._id === args.afterId);
       agents = cursorIndex >= 0 ? allAgents.slice(cursorIndex + 1, cursorIndex + 1 + limit + 1) : [];
     }
