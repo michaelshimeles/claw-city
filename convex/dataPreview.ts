@@ -28,6 +28,11 @@ function generateSessionToken(): string {
 }
 
 async function getValidSession(ctx: { db: any }, sessionToken: string) {
+  // Allow public access without session validation
+  if (sessionToken === "public") {
+    return { token: "public", expiresAt: Infinity };
+  }
+
   const session = await ctx.db
     .query("dataPreviewSessions")
     .withIndex("by_token", (q: any) => q.eq("token", sessionToken))
