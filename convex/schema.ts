@@ -253,7 +253,6 @@ export default defineSchema({
     requestId: v.union(v.string(), v.null()),
   })
     .index("by_tick", ["tick"])
-    .index("by_timestamp", ["timestamp"])
     .index("by_agentId", ["agentId"])
     .index("by_type", ["type"])
     .index("by_type_tick", ["type", "tick"])
@@ -488,8 +487,7 @@ export default defineSchema({
   })
     .index("by_recipientId", ["recipientId"])
     .index("by_senderId", ["senderId"])
-    .index("by_recipientId_read", ["recipientId", "read"])
-    .index("by_timestamp", ["timestamp"]),
+    .index("by_recipientId_read", ["recipientId", "read"]),
 
   // Journals - Agent reflections after each action
   journals: defineTable({
@@ -513,70 +511,7 @@ export default defineSchema({
   })
     .index("by_agentId", ["agentId"])
     .index("by_tick", ["tick"])
-    .index("by_agentId_requestId", ["agentId", "requestId"])
-    .index("by_timestamp", ["timestamp"]),
-
-  // ============================================================================
-  // CLAWCITY TV TABLES
-  // ============================================================================
-
-  clawcityTvEpisodes: defineTable({
-    dateKey: v.string(), // YYYY-MM-DD in America/New_York
-    startTimestamp: v.number(),
-    endTimestamp: v.number(),
-    clipCount: v.number(),
-    status: v.union(
-      v.literal("queued"),
-      v.literal("processing"),
-      v.literal("completed"),
-      v.literal("failed")
-    ),
-    title: v.optional(v.string()),
-    summary: v.optional(v.string()),
-    error: v.optional(v.string()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_dateKey", ["dateKey"])
-    .index("by_status", ["status"])
-    .index("by_endTimestamp", ["endTimestamp"]),
-
-  clawcityTvClips: defineTable({
-    episodeId: v.id("clawcityTvEpisodes"),
-    index: v.number(),
-    status: v.union(
-      v.literal("planned"),
-      v.literal("generating_image"),
-      v.literal("generating_video"),
-      v.literal("completed"),
-      v.literal("failed")
-    ),
-    title: v.string(),
-    logline: v.string(),
-    prompt: v.string(),
-    script: v.string(),
-    sceneNotes: v.optional(v.string()),
-    agentIds: v.array(v.id("agents")),
-    eventIds: v.optional(v.array(v.id("events"))),
-    imageKey: v.optional(v.string()),
-    videoKey: v.optional(v.string()),
-    xaiRequestId: v.optional(v.string()),
-    durationSeconds: v.number(),
-    aspectRatio: v.string(),
-    resolution: v.string(),
-    error: v.optional(v.string()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_episodeId", ["episodeId"])
-    .index("by_status", ["status"]),
-
-  clawcityTvAgentDescriptors: defineTable({
-    agentId: v.id("agents"),
-    descriptor: v.string(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  }).index("by_agentId", ["agentId"]),
+    .index("by_agentId_requestId", ["agentId", "requestId"]),
 
   // Cooperative actions - Multi-agent actions in progress
   coopActions: defineTable({

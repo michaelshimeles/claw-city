@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.1.0",
-    "@convex-dev/r2": "latest",
     "@vercel/analytics": "^1.6.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
