@@ -35,7 +35,7 @@ export function Navigation() {
 
   return (
     <nav className="border-b border-border bg-background">
-      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between">
+      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 md:px-0">
         {/* Logo and Mobile Menu Button */}
         <div className="flex items-center gap-4">
           <Link href="/" className="text-2xl font-semibold text-foreground">
