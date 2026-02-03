@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useState } from "react";
+import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import {
   Card,
@@ -16,17 +16,13 @@ import {
   DatabaseIcon,
   MessageSquareIcon,
   ActivityIcon,
-  CpuIcon,
   BrainIcon,
   HeartHandshakeIcon,
   TrendingUpIcon,
   Loader2Icon,
-  LockIcon,
   CopyIcon,
   CheckIcon,
 } from "lucide-react";
-
-const DATA_PREVIEW_TOKEN_KEY = "data-preview-token";
 
 type DatasetTab = "decisions" | "negotiations" | "trust" | "economic" | "reasoning";
 
@@ -41,70 +37,6 @@ const DATASET_TABS: {
   { key: "economic", label: "Economic Data", icon: TrendingUpIcon },
   { key: "reasoning", label: "Reasoning Chains", icon: BrainIcon },
 ];
-
-function PasswordGate({ onAuthenticated }: { onAuthenticated: (token: string) => void }) {
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const createSession = useMutation(api.dataPreview.createDataPreviewSession);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSubmitting(true);
-    setError(false);
-    try {
-      const result = await createSession({ password });
-      if (result?.ok && result.sessionToken) {
-        localStorage.setItem(DATA_PREVIEW_TOKEN_KEY, result.sessionToken);
-        onAuthenticated(result.sessionToken);
-        return;
-      }
-      setError(true);
-      setTimeout(() => setError(false), 2000);
-    } catch {
-      setError(true);
-      setTimeout(() => setError(false), 2000);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <LockIcon className="w-5 h-5" />
-            Data Preview Access
-          </CardTitle>
-          <CardDescription>
-            Enter the password to view the data preview dashboard
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter password"
-              className={`w-full px-3 py-2 rounded-md bg-background border ${
-                error ? "border-red-500" : "border-border"
-              } text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary`}
-              autoFocus
-            />
-            {error && (
-              <p className="text-xs text-red-500">Incorrect password</p>
-            )}
-            <Button type="submit" className="w-full" disabled={submitting}>
-              Access Dashboard
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
 
 function SampleViewer({ data }: { data: unknown }) {
   const [copied, setCopied] = useState(false);
@@ -344,7 +276,7 @@ function DataPreviewDashboard({ sessionToken }: { sessionToken: string }) {
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <StatCard
             value={stats.totalDecisions as number | string}
             label="Decisions"
@@ -359,11 +291,6 @@ function DataPreviewDashboard({ sessionToken }: { sessionToken: string }) {
             value={stats.totalEvents as number | string}
             label="Events"
             icon={ActivityIcon}
-          />
-          <StatCard
-            value={stats.uniqueLLMs}
-            label="LLM Types"
-            icon={CpuIcon}
           />
         </div>
 
@@ -445,39 +372,5 @@ function DataPreviewDashboard({ sessionToken }: { sessionToken: string }) {
 }
 
 export default function DataPreviewPage() {
-  const [sessionToken, setSessionToken] = useState<string | null>(null);
-  const [checking, setChecking] = useState(true);
-
-  useEffect(() => {
-    // Check if already authenticated
-    const storedToken = localStorage.getItem(DATA_PREVIEW_TOKEN_KEY);
-    setSessionToken(storedToken);
-    setChecking(false);
-  }, []);
-
-  const sessionStatus = useQuery(
-    api.dataPreview.validateDataPreviewSession,
-    sessionToken ? { sessionToken } : "skip"
-  );
-
-  useEffect(() => {
-    if (sessionStatus && !sessionStatus.valid) {
-      localStorage.removeItem(DATA_PREVIEW_TOKEN_KEY);
-      setSessionToken(null);
-    }
-  }, [sessionStatus]);
-
-  if (checking || (sessionToken && sessionStatus === undefined)) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2Icon className="w-8 h-8 text-primary animate-spin" />
-      </div>
-    );
-  }
-
-  if (!sessionToken || sessionStatus?.valid === false) {
-    return <PasswordGate onAuthenticated={(token) => setSessionToken(token)} />;
-  }
-
-  return <DataPreviewDashboard sessionToken={sessionToken} />;
+  return <DataPreviewDashboard sessionToken="public" />;
 }
