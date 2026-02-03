@@ -335,17 +335,6 @@ function DataPreviewDashboard({ sessionToken }: { sessionToken: string }) {
           </Card>
         </div>
 
-        {/* LLM Distribution */}
-        <div>
-          <h2 className="text-lg font-semibold mb-4">LLM Model Distribution</h2>
-          <div className="max-w-xl">
-            <LLMDistributionCard
-              distribution={llmDistribution.byProvider}
-              totalAgents={llmDistribution.totalAgents}
-            />
-          </div>
-        </div>
-
         {/* CTA */}
         <Card className="bg-primary/5 border-primary/20">
           <CardContent className="py-6">
