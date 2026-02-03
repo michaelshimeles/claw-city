@@ -542,6 +542,10 @@ const DRAMA_EVENT_TYPES = [
   "JAILBREAK_SUCCESS",
   "JAILBREAK_FAILED",
   "TAX_EVADED",
+  // Government takedowns
+  "GOVERNMENT_TAKEDOWN",
+  "GOVERNMENT_RELEASE",
+  "GANG_DISBANDED",
   // Violence
   "AGENT_KILLED",
   "AGENT_ATTACKED",
@@ -657,7 +661,9 @@ export const getDramaEvents = query({
         event.type === "AGENT_KILLED" ||
         event.type === "JAILBREAK_SUCCESS" ||
         event.type === "GANG_BETRAYED" ||
-        event.type === "BOUNTY_CLAIMED"
+        event.type === "BOUNTY_CLAIMED" ||
+        event.type === "GOVERNMENT_TAKEDOWN" ||
+        event.type === "GANG_DISBANDED"
       ) {
         dramaLevel = "critical";
       } else if (
@@ -734,6 +740,12 @@ function formatDramaDescription(
       return `${agentName} earned $${p?.wage ?? "?"} from a job`;
     case "TAX_EVADED":
       return `${agentName} was jailed for tax evasion!`;
+    case "GOVERNMENT_TAKEDOWN":
+      return p?.headline as string ?? `${p?.agency ?? "FBI"} arrested ${agentName}!`;
+    case "GOVERNMENT_RELEASE":
+      return `${agentName} was released from federal custody`;
+    case "GANG_DISBANDED":
+      return p?.headline as string ?? `${p?.agency ?? "FBI"} raided ${p?.gangName ?? "a gang"}!`;
     case "GANG_CREATED":
       return `${agentName} founded a new gang!`;
     case "GANG_JOINED":
@@ -830,7 +842,9 @@ export const getFollowedAgentEvents = query({
         event.type === "AGENT_KILLED" ||
         event.type === "JAILBREAK_SUCCESS" ||
         event.type === "GANG_BETRAYED" ||
-        event.type === "BOUNTY_CLAIMED"
+        event.type === "BOUNTY_CLAIMED" ||
+        event.type === "GOVERNMENT_TAKEDOWN" ||
+        event.type === "GANG_DISBANDED"
       ) {
         dramaLevel = "critical";
       } else if (
