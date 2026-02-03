@@ -18,6 +18,7 @@ const navLinks = [
   { href: "/world", label: "World" },
   { href: "/map", label: "Map" },
   { href: "/events", label: "Events" },
+  { href: "/clawcitytv", label: "ClawCityTV" },
   { href: "/info", label: "Info" },
 ];
 

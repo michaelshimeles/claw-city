@@ -6,13 +6,6 @@ import { R2 } from "@convex-dev/r2";
 
 const r2 = new R2(components.r2);
 
-type ClipStatus =
-  | "planned"
-  | "generating_image"
-  | "generating_video"
-  | "completed"
-  | "failed";
-
 // ============================================================================
 // PUBLIC QUERIES (UI)
 // ============================================================================
@@ -35,8 +28,12 @@ export const listEpisodes = query({
 
         const clipsWithUrls = await Promise.all(
           clips.map(async (clip) => {
-            const videoUrl = clip.videoKey ? await r2.getUrl(clip.videoKey) : null;
-            const imageUrl = clip.imageKey ? await r2.getUrl(clip.imageKey) : null;
+            const videoUrl = clip.videoKey
+              ? await r2.getUrl(clip.videoKey, { expiresIn: 60 * 60 * 24 })
+              : null;
+            const imageUrl = clip.imageKey
+              ? await r2.getUrl(clip.imageKey, { expiresIn: 60 * 60 * 24 })
+              : null;
             return {
               ...clip,
               videoUrl,
@@ -383,6 +380,7 @@ export const storeR2FromUrl = internalAction({
     url: v.string(),
     keyPrefix: v.string(),
     type: v.optional(v.string()),
+    expiresIn: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const response = await fetch(args.url);
@@ -399,7 +397,9 @@ export const storeR2FromUrl = internalAction({
       type: contentType,
     });
 
-    const publicUrl = await r2.getUrl(storedKey);
+    const publicUrl = await r2.getUrl(storedKey, {
+      expiresIn: args.expiresIn ?? 60 * 60,
+    });
 
     return {
       key: storedKey,

@@ -188,6 +188,7 @@ export async function POST(request: Request) {
           url: imageUrl,
           keyPrefix: `clawcitytv/${dateKey}/clip-${index + 1}/image`,
           type: "image/jpeg",
+          expiresIn: 60 * 60 * 2,
         }
       );
 
@@ -283,6 +284,21 @@ function buildVideoPrompt(clip: ClipPlan, agentDescriptor: string): string {
 }
 
 async function generateClipPlans(materials: StoryMaterials, apiKey: string) {
+  const validAgentIds = new Set<string>();
+  const validEventIds = new Set<string>();
+
+  for (const event of materials.events) {
+    validEventIds.add(event._id.toString());
+    if (event.agentId) validAgentIds.add(event.agentId.toString());
+  }
+  for (const journal of materials.journals) {
+    validAgentIds.add(journal.agentId.toString());
+  }
+  for (const message of materials.messages) {
+    validAgentIds.add(message.senderId.toString());
+    validAgentIds.add(message.recipientId.toString());
+  }
+
   const events = materials.events.map((event) => ({
     id: event._id,
     type: event.type,
@@ -369,8 +385,12 @@ async function generateClipPlans(materials: StoryMaterials, apiKey: string) {
         prompt: clip.prompt ?? clip.script ?? "Cinematic crime scene.",
         script: clip.script ?? clip.logline ?? "A new turn in ClawCity.",
         sceneNotes: clip.sceneNotes,
-        agentIds: clip.agentIds ?? [],
-        eventIds: clip.eventIds ?? [],
+        agentIds: (clip.agentIds ?? []).filter((id) =>
+          validAgentIds.has(id.toString())
+        ),
+        eventIds: (clip.eventIds ?? []).filter((id) =>
+          validEventIds.has(id.toString())
+        ),
       })),
     };
   }
