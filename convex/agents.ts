@@ -128,11 +128,18 @@ export const listAgents = query({
       taxOwed: s.taxOwed,
       bannedAt: s.bannedAt,
       // Fields not in summaries - provide defaults for frontend compatibility
-      inventory: [],
+      inventory: [] as { itemId: string; qty: number }[],
       stamina: 100,
       maxStamina: 100,
       busyUntilTick: null,
       currentAction: null,
+      busyAction: null,
+      skills: {
+        combat: 1,
+        stealth: 1,
+        negotiation: 1,
+        driving: 1,
+      },
     }));
 
     return {
