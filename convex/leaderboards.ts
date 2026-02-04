@@ -6,6 +6,48 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
 
+const AGENT_SAMPLE_LIMIT = 2000;
+
+async function loadZoneNames(
+  ctx: { db: any },
+  zoneIds: Array<string | null | undefined>
+): Promise<Record<string, string>> {
+  const uniqueIds = Array.from(
+    new Set(zoneIds.filter((id): id is string => typeof id === "string"))
+  );
+  const zones = await Promise.all(
+    uniqueIds.map((id) => ctx.db.get(id))
+  );
+  const zonesById: Record<string, string> = {};
+  for (let i = 0; i < uniqueIds.length; i++) {
+    const zone = zones[i];
+    if (zone) {
+      zonesById[uniqueIds[i]] = zone.name;
+    }
+  }
+  return zonesById;
+}
+
+async function loadGangMeta(
+  ctx: { db: any },
+  gangIds: Array<string | null | undefined>
+): Promise<Record<string, { name: string; tag: string; color: string }>> {
+  const uniqueIds = Array.from(
+    new Set(gangIds.filter((id): id is string => typeof id === "string"))
+  );
+  const gangs = await Promise.all(
+    uniqueIds.map((id) => ctx.db.get(id))
+  );
+  const gangsById: Record<string, { name: string; tag: string; color: string }> = {};
+  for (let i = 0; i < uniqueIds.length; i++) {
+    const gang = gangs[i];
+    if (gang) {
+      gangsById[uniqueIds[i]] = { name: gang.name, tag: gang.tag, color: gang.color };
+    }
+  }
+  return gangsById;
+}
+
 export type LeaderboardCategory =
   | "richest"
   | "topEarners"
@@ -68,23 +110,18 @@ export const getLeaderboard = query({
   },
   handler: async (ctx, args) => {
     const limit = args.limit ?? 10;
-    const allAgents = await ctx.db.query("agents").collect();
+    const allAgents = await ctx.db.query("agents").take(AGENT_SAMPLE_LIMIT);
     // Filter out banned agents
     const agents = allAgents.filter((a) => !a.bannedAt);
 
-    // Get zones for location names
-    const zones = await ctx.db.query("zones").collect();
-    const zonesById: Record<string, string> = {};
-    for (const zone of zones) {
-      zonesById[zone._id.toString()] = zone.name;
-    }
-
-    // Get gangs for gang names
-    const gangs = await ctx.db.query("gangs").collect();
-    const gangsById: Record<string, { name: string; tag: string; color: string }> = {};
-    for (const gang of gangs) {
-      gangsById[gang._id.toString()] = { name: gang.name, tag: gang.tag, color: gang.color };
-    }
+    const zonesById = await loadZoneNames(
+      ctx,
+      agents.map((agent) => agent.locationZoneId?.toString())
+    );
+    const gangsById = await loadGangMeta(
+      ctx,
+      agents.map((agent) => agent.gangId?.toString())
+    );
 
     // Sort and slice based on category
     let sortedAgents = [...agents];
@@ -170,22 +207,14 @@ export const getAllLeaderboards = query({
   },
   handler: async (ctx, args) => {
     const limit = args.limit ?? 5;
-    const allAgents = await ctx.db.query("agents").collect();
+    const allAgents = await ctx.db.query("agents").take(AGENT_SAMPLE_LIMIT);
     // Filter out banned agents
     const agents = allAgents.filter((a) => !a.bannedAt);
 
-    // Get zones and gangs for lookups
-    const zones = await ctx.db.query("zones").collect();
-    const zonesById: Record<string, string> = {};
-    for (const zone of zones) {
-      zonesById[zone._id.toString()] = zone.name;
-    }
-
-    const gangs = await ctx.db.query("gangs").collect();
-    const gangsById: Record<string, { name: string; tag: string; color: string }> = {};
-    for (const gang of gangs) {
-      gangsById[gang._id.toString()] = { name: gang.name, tag: gang.tag, color: gang.color };
-    }
+    const gangsById = await loadGangMeta(
+      ctx,
+      agents.map((agent) => agent.gangId?.toString())
+    );
 
     const formatAgent = (agent: typeof agents[0], rank: number) => {
       const gang = agent.gangId ? gangsById[agent.gangId.toString()] : null;

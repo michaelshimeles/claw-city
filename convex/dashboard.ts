@@ -6,6 +6,56 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
 
+const AGENT_SAMPLE_LIMIT = 2000;
+const EVENT_FETCH_LIMIT = 300;
+
+async function loadAgentNames(
+  ctx: { db: any },
+  agentIds: Array<string | null | undefined>
+): Promise<Record<string, string>> {
+  const uniqueIds = Array.from(
+    new Set(agentIds.filter((id): id is string => typeof id === "string"))
+  );
+  const agents = await Promise.all(
+    uniqueIds.map((id) => ctx.db.get(id))
+  );
+  const agentsById: Record<string, string> = {};
+  for (let i = 0; i < uniqueIds.length; i++) {
+    const agent = agents[i];
+    if (agent) {
+      agentsById[uniqueIds[i]] = agent.name;
+    }
+  }
+  return agentsById;
+}
+
+async function loadZoneNames(
+  ctx: { db: any },
+  zoneIds: Array<string | null | undefined>
+): Promise<Record<string, string>> {
+  const uniqueIds = Array.from(
+    new Set(zoneIds.filter((id): id is string => typeof id === "string"))
+  );
+  const zones = await Promise.all(
+    uniqueIds.map((id) => ctx.db.get(id))
+  );
+  const zonesById: Record<string, string> = {};
+  for (let i = 0; i < uniqueIds.length; i++) {
+    const zone = zones[i];
+    if (zone) {
+      zonesById[uniqueIds[i]] = zone.name;
+    }
+  }
+  return zonesById;
+}
+
+async function safeCount(query: any, sampleLimit = AGENT_SAMPLE_LIMIT): Promise<number> {
+  if (typeof query.count === "function") {
+    return query.count();
+  }
+  const sample = await query.take(sampleLimit);
+  return sample.length;
+}
 // Event category mappings for filtering
 const CRIME_EVENTS = [
   "CRIME_ATTEMPTED",
@@ -73,32 +123,23 @@ const ECONOMIC_EVENTS = [
 export const getAgentStats = query({
   args: {},
   handler: async (ctx) => {
-    const allAgents = await ctx.db.query("agents").collect();
-    // Filter out banned agents
-    const agents = allAgents.filter((a) => !a.bannedAt);
-
-    const total = agents.length;
-    let idle = 0;
-    let busy = 0;
-    let jailed = 0;
-    let hospitalized = 0;
-
-    for (const agent of agents) {
-      switch (agent.status) {
-        case "idle":
-          idle++;
-          break;
-        case "busy":
-          busy++;
-          break;
-        case "jailed":
-          jailed++;
-          break;
-        case "hospitalized":
-          hospitalized++;
-          break;
-      }
-    }
+    const [total, idle, busy, jailed, hospitalized] = await Promise.all([
+      safeCount(ctx.db.query("agents")),
+      safeCount(
+        ctx.db.query("agents").withIndex("by_status", (q: any) => q.eq("status", "idle"))
+      ),
+      safeCount(
+        ctx.db.query("agents").withIndex("by_status", (q: any) => q.eq("status", "busy"))
+      ),
+      safeCount(
+        ctx.db.query("agents").withIndex("by_status", (q: any) => q.eq("status", "jailed"))
+      ),
+      safeCount(
+        ctx.db
+          .query("agents")
+          .withIndex("by_status", (q: any) => q.eq("status", "hospitalized"))
+      ),
+    ]);
 
     return {
       total,
@@ -121,7 +162,7 @@ export const getTopAgentsByCash = query({
   handler: async (ctx, args) => {
     const limit = args.limit ?? 5;
 
-    const allAgents = await ctx.db.query("agents").collect();
+    const allAgents = await ctx.db.query("agents").take(AGENT_SAMPLE_LIMIT);
     // Filter out banned agents
     const agents = allAgents.filter((a) => !a.bannedAt);
 
@@ -237,19 +278,14 @@ export const getRecentActivityFeed = query({
 
     events = events.slice(0, limit);
 
-    // Get all agents for name lookup
-    const agents = await ctx.db.query("agents").collect();
-    const agentsById: Record<string, string> = {};
-    for (const agent of agents) {
-      agentsById[agent._id.toString()] = agent.name;
-    }
-
-    // Get all zones for name lookup
-    const zones = await ctx.db.query("zones").collect();
-    const zonesById: Record<string, string> = {};
-    for (const zone of zones) {
-      zonesById[zone._id.toString()] = zone.name;
-    }
+    const agentsById = await loadAgentNames(
+      ctx,
+      events.map((event) => event.agentId?.toString())
+    );
+    const zonesById = await loadZoneNames(
+      ctx,
+      events.map((event) => event.zoneId?.toString())
+    );
 
     // Format events with rich details
     const formattedEvents = events.map((event) => {
@@ -403,9 +439,9 @@ function formatEventDescription(
 export const getWorldStats = query({
   args: {},
   handler: async (ctx) => {
-    const [world, allAgents, allGangs, territories, coopActions, government] = await Promise.all([
+    const [world, agentsSample, allGangs, territories, coopActions, government] = await Promise.all([
       ctx.db.query("world").first(),
-      ctx.db.query("agents").collect(),
+      ctx.db.query("agents").take(AGENT_SAMPLE_LIMIT),
       ctx.db.query("gangs").collect(),
       ctx.db.query("territories").collect(),
       ctx.db
@@ -416,7 +452,7 @@ export const getWorldStats = query({
     ]);
 
     // Filter out banned agents and disbanded gangs
-    const agents = allAgents.filter((a) => !a.bannedAt);
+    const agents = agentsSample.filter((a) => !a.bannedAt);
     const gangs = allGangs.filter((g) => !g.disbandedAt);
 
     const currentTick = world?.tick ?? 0;
@@ -427,7 +463,7 @@ export const getWorldStats = query({
     const avgHeat = agents.length > 0 ? Math.round(totalHeat / agents.length) : 0;
 
     // Find hottest zone
-    const zones = await ctx.db.query("zones").collect();
+    const zones = await ctx.db.query("zones").take(200);
     const heatByZone: Record<string, { total: number; count: number; name: string }> = {};
     for (const zone of zones) {
       heatByZone[zone._id.toString()] = { total: 0, count: 0, name: zone.name };
@@ -501,14 +537,14 @@ export const getWorldStats = query({
     const totalTaxCollected = government?.totalTaxRevenue ?? 0;
 
     // Count agents with pending taxes
-    const agentsWithTaxDue = agents.filter(
-      (a) => (a.taxOwed ?? 0) > 0
-    ).length;
+    const agentsWithTaxDue = agents.filter((a) => (a.taxOwed ?? 0) > 0).length;
     const totalTaxOwed = agents.reduce((sum, a) => sum + (a.taxOwed ?? 0), 0);
+
+    const totalAgents = await safeCount(ctx.db.query("agents"));
 
     return {
       currentTick,
-      totalAgents: agents.length,
+      totalAgents,
       totalCash,
       avgHeat,
       totalGangs: gangs.length,
@@ -589,7 +625,7 @@ export const getDramaEvents = query({
     const allEvents = await ctx.db
       .query("events")
       .order("desc")
-      .take(500);
+      .take(EVENT_FETCH_LIMIT);
 
     // Filter to dramatic events only
     const dramaEvents = allEvents.filter((event) => {
@@ -634,18 +670,14 @@ export const getDramaEvents = query({
 
     const events = spreadEvents;
 
-    // Get all agents and zones for name lookup
-    const agents = await ctx.db.query("agents").collect();
-    const agentsById: Record<string, string> = {};
-    for (const agent of agents) {
-      agentsById[agent._id.toString()] = agent.name;
-    }
-
-    const zones = await ctx.db.query("zones").collect();
-    const zonesById: Record<string, string> = {};
-    for (const zone of zones) {
-      zonesById[zone._id.toString()] = zone.name;
-    }
+    const agentsById = await loadAgentNames(
+      ctx,
+      events.map((event) => event.agentId?.toString())
+    );
+    const zonesById = await loadZoneNames(
+      ctx,
+      events.map((event) => event.zoneId?.toString())
+    );
 
     // Format events with human-readable descriptions
     return events.map((event) => {
@@ -791,7 +823,7 @@ export const getFollowedAgentEvents = query({
     const allEvents = await ctx.db
       .query("events")
       .order("desc")
-      .take(500);
+      .take(EVENT_FETCH_LIMIT);
 
     // Filter to events involving followed agents
     const followedEvents = allEvents.filter((event) => {
@@ -815,18 +847,14 @@ export const getFollowedAgentEvents = query({
     // Take the limit
     const events = followedEvents.slice(0, limit);
 
-    // Get all agents and zones for name lookup
-    const agents = await ctx.db.query("agents").collect();
-    const agentsById: Record<string, string> = {};
-    for (const agent of agents) {
-      agentsById[agent._id.toString()] = agent.name;
-    }
-
-    const zones = await ctx.db.query("zones").collect();
-    const zonesById: Record<string, string> = {};
-    for (const zone of zones) {
-      zonesById[zone._id.toString()] = zone.name;
-    }
+    const agentsById = await loadAgentNames(
+      ctx,
+      events.map((event) => event.agentId?.toString())
+    );
+    const zonesById = await loadZoneNames(
+      ctx,
+      events.map((event) => event.zoneId?.toString())
+    );
 
     // Format events with human-readable descriptions
     return events.map((event) => {
