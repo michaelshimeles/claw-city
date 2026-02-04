@@ -72,14 +72,12 @@ export const listAgents = query({
     const limit = Math.min(args.limit ?? 50, 100);
     let agents;
 
-    // Get total count of all agents
-    let allAgents = await ctx.db.query("agents").collect();
-
-    // Filter out banned agents by default
+    // Get total count from agentSummaries (lightweight, avoids OCC on agents table)
+    let summaries = await ctx.db.query("agentSummaries").collect();
     if (!args.includeBanned) {
-      allAgents = allAgents.filter((a) => !a.bannedAt);
+      summaries = summaries.filter((s) => !s.bannedAt);
     }
-    const totalCount = allAgents.length;
+    const totalCount = summaries.length;
 
     if (args.status) {
       agents = await ctx.db
@@ -104,7 +102,12 @@ export const listAgents = query({
       }
       agents = agents.slice(0, limit + 1);
     } else {
-      agents = allAgents.slice(0, limit + 1);
+      // Query agents directly with limit instead of loading all
+      agents = await ctx.db.query("agents").take(limit * 2 + 1);
+      if (!args.includeBanned) {
+        agents = agents.filter((a) => !a.bannedAt);
+      }
+      agents = agents.slice(0, limit + 1);
     }
 
     // Filter by zoneId if both filters provided
