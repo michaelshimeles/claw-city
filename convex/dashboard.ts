@@ -780,7 +780,7 @@ export const getFollowedAgentEvents = query({
       args.agentIds.map((agentId) =>
         ctx.db
           .query("eventSummaries")
-          .withIndex("by_targetAgentId", (q: any) => q.eq("targetAgentId", agentId.toString()))
+          .withIndex("by_targetAgentId", (q: any) => q.eq("targetAgentId", agentId))
           .order("desc")
           .take(perAgentLimit)
       )

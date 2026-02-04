@@ -9,6 +9,7 @@
 import { internal } from "./_generated/api";
 import { internalAction, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
+import { Id } from "./_generated/dataModel";
 
 const AGENT_BATCH_SIZE = 10;
 const EVENT_BATCH_SIZE = 10;
@@ -430,7 +431,7 @@ export const refreshEventSummaries = internalMutation({
         zoneName: zoneName ?? undefined,
         targetAgentId:
           typeof eventPayload?.targetAgentId === "string"
-            ? eventPayload.targetAgentId
+            ? (eventPayload.targetAgentId as unknown as Id<"agents">)
             : null,
         category,
         description,
@@ -670,7 +671,7 @@ export const backfillEventSummaries = internalMutation({
         zoneName: zoneName ?? undefined,
         targetAgentId:
           typeof eventPayload?.targetAgentId === "string"
-            ? eventPayload.targetAgentId
+            ? (eventPayload.targetAgentId as unknown as Id<"agents">)
             : null,
         category,
         description,

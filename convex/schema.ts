@@ -319,7 +319,7 @@ export default defineSchema({
     agentName: v.optional(v.string()),
     zoneId: v.union(v.id("zones"), v.null()),
     zoneName: v.optional(v.string()),
-    targetAgentId: v.union(v.string(), v.null()),
+    targetAgentId: v.union(v.id("agents"), v.null()),
     category: v.string(),
     description: v.string(),
     dramaDescription: v.optional(v.string()),
