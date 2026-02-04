@@ -10,10 +10,10 @@ import { internal } from "./_generated/api";
 import { internalAction, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 
-const AGENT_BATCH_SIZE = 1;
-const EVENT_BATCH_SIZE = 1;
-const ZONE_BATCH_SIZE = 1;
-const GANG_BATCH_SIZE = 1;
+const AGENT_BATCH_SIZE = 10;
+const EVENT_BATCH_SIZE = 10;
+const ZONE_BATCH_SIZE = 10;
+const GANG_BATCH_SIZE = 10;
 
 const CRIME_EVENTS = [
   "CRIME_ATTEMPTED",
