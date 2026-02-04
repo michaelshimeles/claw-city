@@ -29,9 +29,6 @@ export const getZones = query({
   handler: async (ctx) => {
     const zones = await ctx.db.query("zones").collect();
 
-    // Use agentSummaries for counting (avoids OCC on agents table)
-    const allSummaries = await ctx.db.query("agentSummaries").collect();
-    const agents = allSummaries.filter((a) => !a.bannedAt);
     const jobs = await ctx.db
       .query("jobs")
       .filter((q) => q.eq(q.field("active"), true))
@@ -39,16 +36,8 @@ export const getZones = query({
     const businesses = await ctx.db.query("businesses").collect();
 
     // Build counts per zone
-    const agentCountByZone: Record<string, number> = {};
     const jobCountByZone: Record<string, number> = {};
     const businessCountByZone: Record<string, number> = {};
-
-    for (const agent of agents) {
-      const zoneId = agent.locationZoneId?.toString();
-      if (zoneId) {
-        agentCountByZone[zoneId] = (agentCountByZone[zoneId] || 0) + 1;
-      }
-    }
 
     for (const job of jobs) {
       const zoneId = job.zoneId.toString();
@@ -60,16 +49,29 @@ export const getZones = query({
       businessCountByZone[zoneId] = (businessCountByZone[zoneId] || 0) + 1;
     }
 
-    return zones.map((zone) => ({
-      _id: zone._id,
-      slug: zone.slug,
-      name: zone.name,
-      type: zone.type,
-      description: zone.description,
-      agentCount: agentCountByZone[zone._id.toString()] || 0,
-      jobCount: jobCountByZone[zone._id.toString()] || 0,
-      businessCount: businessCountByZone[zone._id.toString()] || 0,
-    }));
+    // Get agent counts per zone using indexed queries (avoids loading all summaries)
+    const zonesWithCounts = await Promise.all(
+      zones.map(async (zone) => {
+        const agentsInZone = await ctx.db
+          .query("agentSummaries")
+          .withIndex("by_locationZoneId", (q) => q.eq("locationZoneId", zone._id))
+          .filter((q) => q.eq(q.field("bannedAt"), undefined))
+          .collect();
+
+        return {
+          _id: zone._id,
+          slug: zone.slug,
+          name: zone.name,
+          type: zone.type,
+          description: zone.description,
+          agentCount: agentsInZone.length,
+          jobCount: jobCountByZone[zone._id.toString()] || 0,
+          businessCount: businessCountByZone[zone._id.toString()] || 0,
+        };
+      })
+    );
+
+    return zonesWithCounts;
   },
 });
 

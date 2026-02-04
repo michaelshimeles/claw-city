@@ -72,13 +72,6 @@ export const listAgents = query({
     const limit = Math.min(args.limit ?? 50, 100);
     let agents;
 
-    // Get total count from agentSummaries (lightweight, avoids OCC on agents table)
-    let summaries = await ctx.db.query("agentSummaries").collect();
-    if (!args.includeBanned) {
-      summaries = summaries.filter((s) => !s.bannedAt);
-    }
-    const totalCount = summaries.length;
-
     if (args.status) {
       agents = await ctx.db
         .query("agents")
@@ -127,7 +120,6 @@ export const listAgents = query({
     return {
       agents: safeAgents,
       hasMore,
-      totalCount,
       nextCursor: hasMore && agents.length > 0 ? agents[agents.length - 1]._id : null,
     };
   },
