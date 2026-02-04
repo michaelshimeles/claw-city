@@ -16,7 +16,9 @@ async function loadZoneNames(
     new Set(zoneIds.filter((id): id is string => typeof id === "string"))
   );
   const zones = await Promise.all(
-    uniqueIds.map((id) => ctx.db.get(id))
+    uniqueIds.map((id) =>
+      ctx.db.query("zoneSummaries").withIndex("by_zoneId", (q: any) => q.eq("zoneId", id)).first()
+    )
   );
   const zonesById: Record<string, string> = {};
   for (let i = 0; i < uniqueIds.length; i++) {
@@ -36,7 +38,9 @@ async function loadGangMeta(
     new Set(gangIds.filter((id): id is string => typeof id === "string"))
   );
   const gangs = await Promise.all(
-    uniqueIds.map((id) => ctx.db.get(id))
+    uniqueIds.map((id) =>
+      ctx.db.query("gangSummaries").withIndex("by_gangId", (q: any) => q.eq("gangId", id)).first()
+    )
   );
   const gangsById: Record<string, { name: string; tag: string; color: string }> = {};
   for (let i = 0; i < uniqueIds.length; i++) {
@@ -110,7 +114,7 @@ export const getLeaderboard = query({
   },
   handler: async (ctx, args) => {
     const limit = args.limit ?? 10;
-    const allAgents = await ctx.db.query("agents").take(AGENT_SAMPLE_LIMIT);
+    const allAgents = await ctx.db.query("agentSummaries").take(AGENT_SAMPLE_LIMIT);
     // Filter out banned agents
     const agents = allAgents.filter((a) => !a.bannedAt);
 
@@ -123,28 +127,26 @@ export const getLeaderboard = query({
       agents.map((agent) => agent.gangId?.toString())
     );
 
-    // Sort and slice based on category
     let sortedAgents = [...agents];
     switch (args.category) {
       case "richest":
         sortedAgents.sort((a, b) => b.cash - a.cash);
         break;
       case "topEarners":
-        sortedAgents.sort((a, b) => b.stats.lifetimeEarnings - a.stats.lifetimeEarnings);
+        sortedAgents.sort((a, b) => b.lifetimeEarnings - a.lifetimeEarnings);
         break;
       case "mostDangerous":
-        sortedAgents.sort((a, b) => b.stats.totalCrimes - a.stats.totalCrimes);
+        sortedAgents.sort((a, b) => b.totalCrimes - a.totalCrimes);
         break;
       case "mostArrested":
-        sortedAgents.sort((a, b) => b.stats.totalArrests - a.stats.totalArrests);
+        sortedAgents.sort((a, b) => b.totalArrests - a.totalArrests);
         break;
       case "longestSurvivors":
-        sortedAgents.sort((a, b) => b.stats.daysSurvived - a.stats.daysSurvived);
+        sortedAgents.sort((a, b) => b.daysSurvived - a.daysSurvived);
         break;
       case "mostGenerous":
         sortedAgents.sort(
-          (a, b) =>
-            (b.socialStats?.giftsGiven ?? 0) - (a.socialStats?.giftsGiven ?? 0)
+          (a, b) => (b.giftsGiven ?? 0) - (a.giftsGiven ?? 0)
         );
         break;
       case "highestHeat":
@@ -158,10 +160,12 @@ export const getLeaderboard = query({
       const gang = agent.gangId ? gangsById[agent.gangId.toString()] : null;
       return {
         rank: index + 1,
-        _id: agent._id,
+        _id: agent.agentId,
         name: agent.name,
         status: agent.status,
-        location: zonesById[agent.locationZoneId.toString()] ?? "Unknown",
+        location: agent.locationZoneId
+          ? zonesById[agent.locationZoneId.toString()] ?? "Unknown"
+          : "Unknown",
         gangTag: gang?.tag ?? null,
         gangColor: gang?.color ?? null,
         // Include all relevant stats
@@ -169,26 +173,26 @@ export const getLeaderboard = query({
         heat: agent.heat,
         health: agent.health,
         reputation: agent.reputation,
-        lifetimeEarnings: agent.stats.lifetimeEarnings,
-        totalCrimes: agent.stats.totalCrimes,
-        totalArrests: agent.stats.totalArrests,
-        daysSurvived: agent.stats.daysSurvived,
-        giftsGiven: agent.socialStats?.giftsGiven ?? 0,
+        lifetimeEarnings: agent.lifetimeEarnings,
+        totalCrimes: agent.totalCrimes,
+        totalArrests: agent.totalArrests,
+        daysSurvived: agent.daysSurvived,
+        giftsGiven: agent.giftsGiven ?? 0,
         // The primary value for this category
         value: (() => {
           switch (args.category) {
             case "richest":
               return agent.cash;
             case "topEarners":
-              return agent.stats.lifetimeEarnings;
+              return agent.lifetimeEarnings;
             case "mostDangerous":
-              return agent.stats.totalCrimes;
+              return agent.totalCrimes;
             case "mostArrested":
-              return agent.stats.totalArrests;
+              return agent.totalArrests;
             case "longestSurvivors":
-              return agent.stats.daysSurvived;
+              return agent.daysSurvived;
             case "mostGenerous":
-              return agent.socialStats?.giftsGiven ?? 0;
+              return agent.giftsGiven ?? 0;
             case "highestHeat":
               return agent.heat;
           }
@@ -207,7 +211,7 @@ export const getAllLeaderboards = query({
   },
   handler: async (ctx, args) => {
     const limit = args.limit ?? 5;
-    const allAgents = await ctx.db.query("agents").take(AGENT_SAMPLE_LIMIT);
+    const allAgents = await ctx.db.query("agentSummaries").take(AGENT_SAMPLE_LIMIT);
     // Filter out banned agents
     const agents = allAgents.filter((a) => !a.bannedAt);
 
@@ -220,7 +224,7 @@ export const getAllLeaderboards = query({
       const gang = agent.gangId ? gangsById[agent.gangId.toString()] : null;
       return {
         rank,
-        _id: agent._id,
+        _id: agent.agentId,
         name: agent.name,
         gangTag: gang?.tag ?? null,
         gangColor: gang?.color ?? null,
@@ -237,43 +241,43 @@ export const getAllLeaderboards = query({
       }));
 
     const topEarners = [...agents]
-      .sort((a, b) => b.stats.lifetimeEarnings - a.stats.lifetimeEarnings)
+      .sort((a, b) => b.lifetimeEarnings - a.lifetimeEarnings)
       .slice(0, limit)
       .map((a, i) => ({
         ...formatAgent(a, i + 1),
-        value: a.stats.lifetimeEarnings,
+        value: a.lifetimeEarnings,
       }));
 
     const mostDangerous = [...agents]
-      .sort((a, b) => b.stats.totalCrimes - a.stats.totalCrimes)
+      .sort((a, b) => b.totalCrimes - a.totalCrimes)
       .slice(0, limit)
       .map((a, i) => ({
         ...formatAgent(a, i + 1),
-        value: a.stats.totalCrimes,
+        value: a.totalCrimes,
       }));
 
     const mostArrested = [...agents]
-      .sort((a, b) => b.stats.totalArrests - a.stats.totalArrests)
+      .sort((a, b) => b.totalArrests - a.totalArrests)
       .slice(0, limit)
       .map((a, i) => ({
         ...formatAgent(a, i + 1),
-        value: a.stats.totalArrests,
+        value: a.totalArrests,
       }));
 
     const longestSurvivors = [...agents]
-      .sort((a, b) => b.stats.daysSurvived - a.stats.daysSurvived)
+      .sort((a, b) => b.daysSurvived - a.daysSurvived)
       .slice(0, limit)
       .map((a, i) => ({
         ...formatAgent(a, i + 1),
-        value: a.stats.daysSurvived,
+        value: a.daysSurvived,
       }));
 
     const mostGenerous = [...agents]
-      .sort((a, b) => (b.socialStats?.giftsGiven ?? 0) - (a.socialStats?.giftsGiven ?? 0))
+      .sort((a, b) => (b.giftsGiven ?? 0) - (a.giftsGiven ?? 0))
       .slice(0, limit)
       .map((a, i) => ({
         ...formatAgent(a, i + 1),
-        value: a.socialStats?.giftsGiven ?? 0,
+        value: a.giftsGiven ?? 0,
       }));
 
     const highestHeat = [...agents]

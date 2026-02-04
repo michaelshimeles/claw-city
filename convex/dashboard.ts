@@ -9,27 +9,7 @@ import { v } from "convex/values";
 const AGENT_SAMPLE_LIMIT = 30;
 const EVENT_FETCH_LIMIT = 40;
 
-async function loadAgentNames(
-  ctx: { db: any },
-  agentIds: Array<string | null | undefined>
-): Promise<Record<string, string>> {
-  const uniqueIds = Array.from(
-    new Set(agentIds.filter((id): id is string => typeof id === "string"))
-  );
-  const agents = await Promise.all(
-    uniqueIds.map((id) => ctx.db.get(id))
-  );
-  const agentsById: Record<string, string> = {};
-  for (let i = 0; i < uniqueIds.length; i++) {
-    const agent = agents[i];
-    if (agent) {
-      agentsById[uniqueIds[i]] = agent.name;
-    }
-  }
-  return agentsById;
-}
-
-async function loadZoneNames(
+async function loadZoneSummaries(
   ctx: { db: any },
   zoneIds: Array<string | null | undefined>
 ): Promise<Record<string, string>> {
@@ -37,7 +17,9 @@ async function loadZoneNames(
     new Set(zoneIds.filter((id): id is string => typeof id === "string"))
   );
   const zones = await Promise.all(
-    uniqueIds.map((id) => ctx.db.get(id))
+    uniqueIds.map((id) =>
+      ctx.db.query("zoneSummaries").withIndex("by_zoneId", (q: any) => q.eq("zoneId", id)).first()
+    )
   );
   const zonesById: Record<string, string> = {};
   for (let i = 0; i < uniqueIds.length; i++) {
@@ -47,6 +29,28 @@ async function loadZoneNames(
     }
   }
   return zonesById;
+}
+
+async function loadGangSummaries(
+  ctx: { db: any },
+  gangIds: Array<string | null | undefined>
+): Promise<Record<string, { tag: string; color: string }>> {
+  const uniqueIds = Array.from(
+    new Set(gangIds.filter((id): id is string => typeof id === "string"))
+  );
+  const gangs = await Promise.all(
+    uniqueIds.map((id) =>
+      ctx.db.query("gangSummaries").withIndex("by_gangId", (q: any) => q.eq("gangId", id)).first()
+    )
+  );
+  const gangsById: Record<string, { tag: string; color: string }> = {};
+  for (let i = 0; i < uniqueIds.length; i++) {
+    const gang = gangs[i];
+    if (gang) {
+      gangsById[uniqueIds[i]] = { tag: gang.tag, color: gang.color };
+    }
+  }
+  return gangsById;
 }
 
 async function safeCount(query: any, sampleLimit = AGENT_SAMPLE_LIMIT): Promise<number> {
@@ -124,19 +128,19 @@ export const getAgentStats = query({
   args: {},
   handler: async (ctx) => {
     const [total, idle, busy, jailed, hospitalized] = await Promise.all([
-      safeCount(ctx.db.query("agents")),
+      safeCount(ctx.db.query("agentSummaries")),
       safeCount(
-        ctx.db.query("agents").withIndex("by_status", (q: any) => q.eq("status", "idle"))
+        ctx.db.query("agentSummaries").withIndex("by_status", (q: any) => q.eq("status", "idle"))
       ),
       safeCount(
-        ctx.db.query("agents").withIndex("by_status", (q: any) => q.eq("status", "busy"))
+        ctx.db.query("agentSummaries").withIndex("by_status", (q: any) => q.eq("status", "busy"))
       ),
       safeCount(
-        ctx.db.query("agents").withIndex("by_status", (q: any) => q.eq("status", "jailed"))
+        ctx.db.query("agentSummaries").withIndex("by_status", (q: any) => q.eq("status", "jailed"))
       ),
       safeCount(
         ctx.db
-          .query("agents")
+          .query("agentSummaries")
           .withIndex("by_status", (q: any) => q.eq("status", "hospitalized"))
       ),
     ]);
@@ -162,40 +166,26 @@ export const getTopAgentsByCash = query({
   handler: async (ctx, args) => {
     const limit = args.limit ?? 5;
 
-    const allAgents = await ctx.db.query("agents").take(AGENT_SAMPLE_LIMIT);
-    // Filter out banned agents
-    const agents = allAgents.filter((a) => !a.bannedAt);
-
-    // Sort by cash descending and take top N
-    const topAgents = agents
-      .sort((a, b) => b.cash - a.cash)
-      .slice(0, limit);
-
-    // Resolve zone names for each agent
-    const agentsWithZones = await Promise.all(
-      topAgents.map(async (agent) => {
-        if (!agent.locationZoneId) {
-          return {
-            _id: agent._id,
-            name: agent.name,
-            cash: agent.cash,
-            status: agent.status,
-            locationZoneName: "Unknown",
-          };
-        }
-
-        const zone = await ctx.db.get(agent.locationZoneId);
-        return {
-          _id: agent._id,
-          name: agent.name,
-          cash: agent.cash,
-          status: agent.status,
-          locationZoneName: zone?.name ?? "Unknown",
-        };
-      })
+    const candidates = await ctx.db
+      .query("agentSummaries")
+      .withIndex("by_cash")
+      .order("desc")
+      .take(Math.min(AGENT_SAMPLE_LIMIT, limit * 3));
+    const topAgents = candidates.filter((a) => !a.bannedAt).slice(0, limit);
+    const zonesById = await loadZoneSummaries(
+      ctx,
+      topAgents.map((agent) => agent.locationZoneId?.toString())
     );
 
-    return agentsWithZones;
+    return topAgents.map((agent) => ({
+      _id: agent.agentId,
+      name: agent.name,
+      cash: agent.cash,
+      status: agent.status,
+      locationZoneName: agent.locationZoneId
+        ? zonesById[agent.locationZoneId.toString()] ?? "Unknown"
+        : "Unknown",
+    }));
   },
 });
 
@@ -212,29 +202,19 @@ export const getRecentEventsWithDetails = query({
 
     // Get events ordered by creation time (desc)
     const events = await ctx.db
-      .query("events")
+      .query("eventSummaries")
+      .withIndex("by_tick")
       .order("desc")
       .take(limit);
 
-    // Resolve agent names for each event
-    const eventsWithDetails = await Promise.all(
-      events.map(async (event) => {
-        let agentName: string | null = null;
-        if (event.agentId) {
-          const agent = await ctx.db.get(event.agentId);
-          agentName = agent?.name ?? null;
-        }
-
-        return {
-          _id: event._id,
-          type: event.type,
-          tick: event.tick,
-          timestamp: event.timestamp,
-          agentName,
-          payload: event.payload,
-        };
-      })
-    );
+    const eventsWithDetails = events.map((event) => ({
+      _id: event.eventId,
+      type: event.type,
+      tick: event.tick,
+      timestamp: event.timestamp,
+      agentName: event.agentName ?? null,
+      payload: null,
+    }));
 
     // Sort by tick descending for consistent ordering
     return eventsWithDetails.sort(
@@ -264,7 +244,11 @@ export const getRecentActivityFeed = query({
 
     // Get events ordered by creation time (desc)
     const fetchLimit = Math.min(EVENT_FETCH_LIMIT, limit * 2);
-    let events = await ctx.db.query("events").order("desc").take(fetchLimit); // Fetch more to filter
+    let events = await ctx.db
+      .query("eventSummaries")
+      .withIndex("by_tick")
+      .order("desc")
+      .take(fetchLimit); // Fetch more to filter
 
     // Filter by category if specified
     if (category !== "all") {
@@ -279,37 +263,12 @@ export const getRecentActivityFeed = query({
 
     events = events.slice(0, limit);
 
-    const agentsById = await loadAgentNames(
-      ctx,
-      events.map((event) => event.agentId?.toString())
-    );
-    const zonesById = await loadZoneNames(
-      ctx,
-      events.map((event) => event.zoneId?.toString())
-    );
-
     // Format events with rich details
     const formattedEvents = events.map((event) => {
-      const agentName = event.agentId
-        ? agentsById[event.agentId.toString()] ?? null
-        : null;
-      const zoneName = event.zoneId
-        ? zonesById[event.zoneId.toString()] ?? null
-        : null;
-
-      // Determine category
-      let eventCategory: "crime" | "social" | "economic" | "other" = "other";
-      if (CRIME_EVENTS.includes(event.type)) eventCategory = "crime";
-      else if (SOCIAL_EVENTS.includes(event.type)) eventCategory = "social";
-      else if (ECONOMIC_EVENTS.includes(event.type)) eventCategory = "economic";
-
-      // Generate description based on event type
-      const description = formatEventDescription(
-        event.type,
-        agentName,
-        zoneName,
-        event.payload
-      );
+      const agentName = event.agentName ?? null;
+      const zoneName = event.zoneName ?? null;
+      const eventCategory = event.category as "crime" | "social" | "economic" | "other";
+      const description = event.description;
 
       // Determine if this is a success/failure event
       const isSuccess =
@@ -322,7 +281,7 @@ export const getRecentActivityFeed = query({
         event.type.includes("DECLINED");
 
       return {
-        _id: event._id,
+        _id: event.eventId,
         type: event.type,
         category: eventCategory,
         tick: event.tick,
@@ -332,7 +291,7 @@ export const getRecentActivityFeed = query({
         zoneId: event.zoneId,
         zoneName,
         description,
-        payload: event.payload,
+        payload: null,
         isSuccess,
         isFailure,
       };
@@ -440,21 +399,24 @@ function formatEventDescription(
 export const getWorldStats = query({
   args: {},
   handler: async (ctx) => {
-    const [world, agentsSample, allGangs, territories, coopActions, government] = await Promise.all([
+    const [world, agentSummaries, gangSummariesSample, totalGangsCount, territoriesCount, coopActionsCount, government] =
+      await Promise.all([
       ctx.db.query("world").first(),
-      ctx.db.query("agents").take(AGENT_SAMPLE_LIMIT),
-      ctx.db.query("gangs").collect(),
-      ctx.db.query("territories").collect(),
-      ctx.db
-        .query("coopActions")
-        .withIndex("by_status", (q) => q.eq("status", "recruiting"))
-        .collect(),
+      ctx.db.query("agentSummaries").take(AGENT_SAMPLE_LIMIT),
+      ctx.db.query("gangSummaries").take(AGENT_SAMPLE_LIMIT),
+      safeCount(ctx.db.query("gangSummaries")),
+      safeCount(ctx.db.query("territories")),
+      safeCount(
+        ctx.db
+          .query("coopActions")
+          .withIndex("by_status", (q: any) => q.eq("status", "recruiting"))
+      ),
       ctx.db.query("government").first(),
     ]);
 
     // Filter out banned agents and disbanded gangs
-    const agents = agentsSample.filter((a) => !a.bannedAt);
-    const gangs = allGangs.filter((g) => !g.disbandedAt);
+    const agents = agentSummaries.filter((a) => !a.bannedAt);
+    const gangs = gangSummariesSample.filter((g) => !g.disbandedAt);
 
     const currentTick = world?.tick ?? 0;
 
@@ -464,21 +426,22 @@ export const getWorldStats = query({
     const avgHeat = agents.length > 0 ? Math.round(totalHeat / agents.length) : 0;
 
     // Find hottest zone
-    const zones = await ctx.db.query("zones").take(200);
+    const zonesById = await loadZoneSummaries(
+      ctx,
+      agents.map((agent) => agent.locationZoneId?.toString())
+    );
     const heatByZone: Record<string, { total: number; count: number; name: string }> = {};
-    for (const zone of zones) {
-      heatByZone[zone._id.toString()] = { total: 0, count: 0, name: zone.name };
+    for (const [zoneId, name] of Object.entries(zonesById)) {
+      heatByZone[zoneId] = { total: 0, count: 0, name };
     }
     for (const agent of agents) {
-      if (!agent.locationZoneId) {
-        continue;
-      }
-
+      if (!agent.locationZoneId) continue;
       const zoneId = agent.locationZoneId.toString();
-      if (heatByZone[zoneId]) {
-        heatByZone[zoneId].total += agent.heat;
-        heatByZone[zoneId].count++;
+      if (!heatByZone[zoneId]) {
+        heatByZone[zoneId] = { total: 0, count: 0, name: "Unknown" };
       }
+      heatByZone[zoneId].total += agent.heat;
+      heatByZone[zoneId].count++;
     }
 
     let hottestZone: { name: string; avgHeat: number } | null = null;
@@ -498,41 +461,20 @@ export const getWorldStats = query({
     const cutoffTick = Math.max(0, currentTick - ticksIn24Hours);
 
     // Use composite index for efficient type+tick queries
-    const [crimeEvents, arrestEvents, taxEvents24h, failedCrimeEvents] = await Promise.all([
-      ctx.db
-        .query("events")
-        .withIndex("by_type_tick", (q) =>
-          q.eq("type", "CRIME_SUCCESS").gte("tick", cutoffTick)
-        )
-        .take(500),
-      ctx.db
-        .query("events")
-        .withIndex("by_type_tick", (q) =>
-          q.eq("type", "AGENT_ARRESTED").gte("tick", cutoffTick)
-        )
-        .take(500),
-      ctx.db
-        .query("events")
-        .withIndex("by_type_tick", (q) =>
-          q.eq("type", "TAX_PAID").gte("tick", cutoffTick)
-        )
-        .take(500),
-      ctx.db
-        .query("events")
-        .withIndex("by_type_tick", (q) =>
-          q.eq("type", "CRIME_FAILED").gte("tick", cutoffTick)
-        )
-        .take(500),
-    ]);
+    const recentEvents24h = await ctx.db
+      .query("eventSummaries")
+      .withIndex("by_tick", (q: any) => q.gte("tick", cutoffTick))
+      .order("desc")
+      .take(400);
 
-    const crimesToday = crimeEvents.length + failedCrimeEvents.length;
-    const arrestsToday = arrestEvents.length;
+    const crimesToday = recentEvents24h.filter((e) => e.type === "CRIME_SUCCESS").length +
+      recentEvents24h.filter((e) => e.type === "CRIME_FAILED").length;
+    const arrestsToday = recentEvents24h.filter((e) => e.type === "AGENT_ARRESTED").length;
 
     // Calculate tax collection stats for last 24h
-    const taxCollected24h = taxEvents24h.reduce((sum, e) => {
-      const payload = e.payload as { amount?: number } | null;
-      return sum + (payload?.amount ?? 0);
-    }, 0);
+    const taxCollected24h = recentEvents24h
+      .filter((e) => e.type === "TAX_PAID")
+      .reduce((sum, e) => sum + (e.amount ?? 0), 0);
 
     // Get total tax collected from government table
     const totalTaxCollected = government?.totalTaxRevenue ?? 0;
@@ -541,16 +483,16 @@ export const getWorldStats = query({
     const agentsWithTaxDue = agents.filter((a) => (a.taxOwed ?? 0) > 0).length;
     const totalTaxOwed = agents.reduce((sum, a) => sum + (a.taxOwed ?? 0), 0);
 
-    const totalAgents = await safeCount(ctx.db.query("agents"));
+    const totalAgents = await safeCount(ctx.db.query("agentSummaries"));
 
     return {
       currentTick,
       totalAgents,
       totalCash,
       avgHeat,
-      totalGangs: gangs.length,
-      totalTerritories: territories.length,
-      activeCoopCrimes: coopActions.length,
+      totalGangs: totalGangsCount,
+      totalTerritories: territoriesCount,
+      activeCoopCrimes: coopActionsCount,
       hottestZone,
       crimesToday,
       arrestsToday,
@@ -625,7 +567,8 @@ export const getDramaEvents = query({
     // Fetch more events to get variety
     const scanLimit = Math.min(EVENT_FETCH_LIMIT, limit * 2);
     const allEvents = await ctx.db
-      .query("events")
+      .query("eventSummaries")
+      .withIndex("by_tick")
       .order("desc")
       .take(scanLimit);
 
@@ -637,7 +580,7 @@ export const getDramaEvents = query({
     // If afterId is provided, filter to events after that ID
     let filteredEvents = dramaEvents;
     if (args.afterId) {
-      const afterIndex = dramaEvents.findIndex((e) => e._id === args.afterId);
+      const afterIndex = dramaEvents.findIndex((e) => e.eventId === args.afterId);
       if (afterIndex >= 0) {
         filteredEvents = dramaEvents.slice(0, afterIndex);
       }
@@ -672,63 +615,19 @@ export const getDramaEvents = query({
 
     const events = spreadEvents;
 
-    const agentsById = await loadAgentNames(
-      ctx,
-      events.map((event) => event.agentId?.toString())
-    );
-    const zonesById = await loadZoneNames(
-      ctx,
-      events.map((event) => event.zoneId?.toString())
-    );
-
     // Format events with human-readable descriptions
-    return events.map((event) => {
-      const agentName = event.agentId
-        ? agentsById[event.agentId.toString()] ?? "Unknown"
-        : "Someone";
-      const zoneName = event.zoneId
-        ? zonesById[event.zoneId.toString()] ?? "somewhere"
-        : "somewhere";
-
-      const description = formatDramaDescription(
-        event.type,
-        agentName,
-        zoneName,
-        event.payload
-      );
-
-      // Determine drama level for styling
-      let dramaLevel: "normal" | "exciting" | "critical" = "normal";
-      if (
-        event.type === "AGENT_KILLED" ||
-        event.type === "JAILBREAK_SUCCESS" ||
-        event.type === "GANG_BETRAYED" ||
-        event.type === "BOUNTY_CLAIMED" ||
-        event.type === "GOVERNMENT_TAKEDOWN" ||
-        event.type === "GANG_DISBANDED"
-      ) {
-        dramaLevel = "critical";
-      } else if (
-        event.type === "CRIME_SUCCESS" ||
-        event.type === "COOP_CRIME_SUCCESS" ||
-        event.type === "GAMBLE_WON"
-      ) {
-        dramaLevel = "exciting";
-      }
-
-      return {
-        _id: event._id,
-        type: event.type,
-        timestamp: event.timestamp,
-        tick: event.tick,
-        agentId: event.agentId,
-        agentName,
-        zoneName,
-        description,
-        dramaLevel,
-        payload: event.payload,
-      };
-    });
+    return events.map((event) => ({
+      _id: event.eventId,
+      type: event.type,
+      timestamp: event.timestamp,
+      tick: event.tick,
+      agentId: event.agentId,
+      agentName: event.agentName ?? "Unknown",
+      zoneName: event.zoneName ?? "somewhere",
+      description: event.dramaDescription ?? event.description,
+      dramaLevel: (event.dramaLevel as "normal" | "exciting" | "critical") ?? "normal",
+      payload: null,
+    }));
   },
 });
 
@@ -825,92 +724,45 @@ export const getFollowedAgentEvents = query({
     const actorEventPages = await Promise.all(
       args.agentIds.map((agentId) =>
         ctx.db
-          .query("events")
-          .withIndex("by_agentId", (q) => q.eq("agentId", agentId))
+          .query("eventSummaries")
+          .withIndex("by_agentId", (q: any) => q.eq("agentId", agentId))
           .order("desc")
           .take(perAgentLimit)
       )
     );
 
-    const recentEvents = await ctx.db
-      .query("events")
-      .order("desc")
-      .take(Math.min(EVENT_FETCH_LIMIT, limit * 2));
+    const targetEventPages = await Promise.all(
+      args.agentIds.map((agentId) =>
+        ctx.db
+          .query("eventSummaries")
+          .withIndex("by_targetAgentId", (q: any) => q.eq("targetAgentId", agentId.toString()))
+          .order("desc")
+          .take(perAgentLimit)
+      )
+    );
 
-    const targetEvents = recentEvents.filter((event) => {
-      const payload = event.payload as Record<string, unknown> | null;
-      if (payload?.targetAgentId) {
-        return followedAgentSet.has(payload.targetAgentId as string);
-      }
-      return false;
-    });
-
-    const mergedEvents = [...actorEventPages.flat(), ...targetEvents];
+    const mergedEvents = [...actorEventPages.flat(), ...targetEventPages.flat()];
     const byId = new Map<string, (typeof mergedEvents)[number]>();
     for (const event of mergedEvents) {
-      byId.set(event._id.toString(), event);
+      byId.set(event.eventId.toString(), event);
     }
 
     const events = Array.from(byId.values())
       .sort((a, b) => b.tick - a.tick || b.timestamp - a.timestamp)
       .slice(0, limit);
 
-    const agentsById = await loadAgentNames(
-      ctx,
-      events.map((event) => event.agentId?.toString())
-    );
-    const zonesById = await loadZoneNames(
-      ctx,
-      events.map((event) => event.zoneId?.toString())
-    );
-
     // Format events with human-readable descriptions
-    return events.map((event) => {
-      const agentName = event.agentId
-        ? agentsById[event.agentId.toString()] ?? "Unknown"
-        : "Someone";
-      const zoneName = event.zoneId
-        ? zonesById[event.zoneId.toString()] ?? "somewhere"
-        : "somewhere";
-
-      const description = formatDramaDescription(
-        event.type,
-        agentName,
-        zoneName,
-        event.payload
-      );
-
-      // Determine drama level for styling
-      let dramaLevel: "normal" | "exciting" | "critical" = "normal";
-      if (
-        event.type === "AGENT_KILLED" ||
-        event.type === "JAILBREAK_SUCCESS" ||
-        event.type === "GANG_BETRAYED" ||
-        event.type === "BOUNTY_CLAIMED" ||
-        event.type === "GOVERNMENT_TAKEDOWN" ||
-        event.type === "GANG_DISBANDED"
-      ) {
-        dramaLevel = "critical";
-      } else if (
-        event.type === "CRIME_SUCCESS" ||
-        event.type === "COOP_CRIME_SUCCESS" ||
-        event.type === "GAMBLE_WON"
-      ) {
-        dramaLevel = "exciting";
-      }
-
-      return {
-        _id: event._id,
-        type: event.type,
-        timestamp: event.timestamp,
-        tick: event.tick,
-        agentId: event.agentId,
-        agentName,
-        zoneName,
-        description,
-        dramaLevel,
-        payload: event.payload,
-      };
-    });
+    return events.map((event) => ({
+      _id: event.eventId,
+      type: event.type,
+      timestamp: event.timestamp,
+      tick: event.tick,
+      agentId: event.agentId,
+      agentName: event.agentName ?? "Unknown",
+      zoneName: event.zoneName ?? "somewhere",
+      description: event.dramaDescription ?? event.description,
+      dramaLevel: (event.dramaLevel as "normal" | "exciting" | "critical") ?? "normal",
+      payload: null,
+    }));
   },
 });

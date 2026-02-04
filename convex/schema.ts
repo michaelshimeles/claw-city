@@ -262,6 +262,80 @@ export default defineSchema({
     .index("by_type_tick", ["type", "tick"])
     .index("by_requestId", ["requestId"]),
 
+  // Summaries - small, read-optimized views for dashboards/leaderboards
+  agentSummaries: defineTable({
+    agentId: v.id("agents"),
+    name: v.string(),
+    status: v.union(
+      v.literal("idle"),
+      v.literal("busy"),
+      v.literal("jailed"),
+      v.literal("hospitalized")
+    ),
+    cash: v.number(),
+    heat: v.number(),
+    health: v.number(),
+    reputation: v.number(),
+    locationZoneId: v.union(v.id("zones"), v.null()),
+    gangId: v.optional(v.id("gangs")),
+    lifetimeEarnings: v.number(),
+    totalCrimes: v.number(),
+    totalArrests: v.number(),
+    daysSurvived: v.number(),
+    giftsGiven: v.optional(v.number()),
+    taxOwed: v.optional(v.number()),
+    bannedAt: v.optional(v.number()),
+  })
+    .index("by_agentId", ["agentId"])
+    .index("by_status", ["status"])
+    .index("by_cash", ["cash"])
+    .index("by_heat", ["heat"])
+    .index("by_lifetimeEarnings", ["lifetimeEarnings"])
+    .index("by_totalCrimes", ["totalCrimes"])
+    .index("by_totalArrests", ["totalArrests"])
+    .index("by_daysSurvived", ["daysSurvived"])
+    .index("by_giftsGiven", ["giftsGiven"]),
+
+  gangSummaries: defineTable({
+    gangId: v.id("gangs"),
+    name: v.string(),
+    tag: v.string(),
+    color: v.string(),
+    disbandedAt: v.optional(v.number()),
+  }).index("by_gangId", ["gangId"]),
+
+  zoneSummaries: defineTable({
+    zoneId: v.id("zones"),
+    name: v.string(),
+    slug: v.string(),
+  }).index("by_zoneId", ["zoneId"]),
+
+  eventSummaries: defineTable({
+    eventId: v.id("events"),
+    type: v.string(),
+    tick: v.number(),
+    timestamp: v.number(),
+    agentId: v.union(v.id("agents"), v.null()),
+    agentName: v.optional(v.string()),
+    zoneId: v.union(v.id("zones"), v.null()),
+    zoneName: v.optional(v.string()),
+    targetAgentId: v.optional(v.string()),
+    category: v.string(),
+    description: v.string(),
+    dramaDescription: v.optional(v.string()),
+    dramaLevel: v.optional(v.string()),
+    amount: v.optional(v.number()),
+  })
+    .index("by_eventId", ["eventId"])
+    .index("by_tick", ["tick"])
+    .index("by_agentId", ["agentId"])
+    .index("by_targetAgentId", ["targetAgentId"]),
+
+  summaryState: defineTable({
+    key: v.string(),
+    value: v.string(),
+  }).index("by_key", ["key"]),
+
   // Ledger - financial transaction history
   ledger: defineTable({
     tick: v.number(),

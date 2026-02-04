@@ -55,6 +55,12 @@ type DisguiseResult = { expired: number };
 type JailReleaseResult = { released: number };
 type HospitalReleaseResult = { discharged: number };
 type DaySurvivedResult = { incremented: number };
+type SummaryResult = {
+  agentsProcessed: number;
+  zonesProcessed: number;
+  gangsProcessed: number;
+  eventsProcessed: number;
+};
 
 type TickRunResult =
   | { skipped: true; reason: string }
@@ -151,6 +157,9 @@ async function runTickHandler(ctx: ActionCtx): Promise<TickRunResult> {
     taxesPaid: taxResult.paid,
     taxEvaders: taxResult.evaded,
   });
+
+  // 14. Refresh summaries (small batch)
+  const _summaryResult: SummaryResult = await ctx.runMutation(internal.summaries.refreshSummaries);
 
   return {
     skipped: false,
