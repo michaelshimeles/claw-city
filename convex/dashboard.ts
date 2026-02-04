@@ -166,11 +166,12 @@ export const getTopAgentsByCash = query({
   handler: async (ctx, args) => {
     const limit = args.limit ?? 5;
 
+    // Fetch more candidates to account for banned agents (up to 10x or AGENT_SAMPLE_LIMIT)
     const candidates = await ctx.db
       .query("agentSummaries")
       .withIndex("by_cash")
       .order("desc")
-      .take(Math.min(AGENT_SAMPLE_LIMIT, limit * 3));
+      .take(Math.min(AGENT_SAMPLE_LIMIT, limit * 10));
     const topAgents = candidates.filter((a) => !a.bannedAt).slice(0, limit);
     const zonesById = await loadZoneSummaries(
       ctx,
@@ -637,7 +638,7 @@ export const getDramaEvents = query({
     if (spreadEvents.length < limit) {
       for (const event of filteredEvents) {
         if (spreadEvents.length >= limit) break;
-        if (!spreadEvents.some(e => e._id === event._id)) {
+        if (!spreadEvents.some(e => e.eventId === event.eventId)) {
           spreadEvents.push(event);
         }
       }

@@ -539,7 +539,7 @@ export const refreshSummaries = internalAction({
 export const backfillAgentSummaries = internalMutation({
   args: { batchSize: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    const batchSize = Math.max(1, Math.min(args.batchSize ?? 25, 200));
+    const batchSize = Math.max(1, Math.min(args.batchSize ?? 50, 200));
     const cursor = await getState(ctx, "agent_cursor");
     const page = await ctx.db
       .query("agents")
@@ -582,7 +582,7 @@ export const backfillAgentSummaries = internalMutation({
 export const backfillZoneSummaries = internalMutation({
   args: { batchSize: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    const batchSize = Math.max(1, Math.min(args.batchSize ?? 25, 200));
+    const batchSize = Math.max(1, Math.min(args.batchSize ?? 50, 200));
     const cursor = await getState(ctx, "zone_cursor");
     const page = await ctx.db
       .query("zones")
@@ -608,7 +608,7 @@ export const backfillZoneSummaries = internalMutation({
 export const backfillGangSummaries = internalMutation({
   args: { batchSize: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    const batchSize = Math.max(1, Math.min(args.batchSize ?? 25, 200));
+    const batchSize = Math.max(1, Math.min(args.batchSize ?? 50, 200));
     const cursor = await getState(ctx, "gang_cursor");
     const page = await ctx.db
       .query("gangs")
@@ -640,7 +640,7 @@ export const backfillGangSummaries = internalMutation({
 export const backfillEventSummaries = internalMutation({
   args: { batchSize: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    const batchSize = Math.max(1, Math.min(args.batchSize ?? 25, 200));
+    const batchSize = Math.max(1, Math.min(args.batchSize ?? 50, 200));
     const cursor = await getState(ctx, "event_cursor");
     const page = await ctx.db
       .query("events")
