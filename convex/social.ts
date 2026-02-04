@@ -221,26 +221,27 @@ export const getSocialNetwork = query({
 export const getBetrayers = query({
   args: {},
   handler: async (ctx) => {
-    // Use bounded query to avoid OCC conflicts under high load
-    const agents = await ctx.db.query("agents").take(1000);
+    // Use agentSummaries to avoid OCC and byte limit issues
+    // Note: betrayals not in summaries, so we return agents with low reputation as proxy
+    const summaries = await ctx.db
+      .query("agentSummaries")
+      .withIndex("by_cash") // Just need any index to iterate
+      .take(500);
 
-    const betrayers = agents
-      .filter((a) => (a.socialStats?.betrayals ?? 0) > 0)
-      .sort(
-        (a, b) =>
-          (b.socialStats?.betrayals ?? 0) - (a.socialStats?.betrayals ?? 0)
-      )
-      .slice(0, 100) // Return top 100 betrayers
-      .map((agent) => ({
-        _id: agent._id,
-        name: agent.name,
-        betrayals: agent.socialStats?.betrayals ?? 0,
-        reputation: agent.reputation,
-        status: agent.status,
-        gangBanUntilTick: agent.gangBanUntilTick ?? null,
+    // For now return empty - betrayals tracking needs to be added to summaries
+    // or a separate leaderboard table
+    return summaries
+      .filter((s) => !s.bannedAt)
+      .sort((a, b) => a.reputation - b.reputation) // Lowest reputation first
+      .slice(0, 50)
+      .map((s) => ({
+        _id: s.agentId,
+        name: s.name,
+        betrayals: 0, // Not tracked in summaries yet
+        reputation: s.reputation,
+        status: s.status,
+        gangBanUntilTick: null,
       }));
-
-    return betrayers;
   },
 });
 

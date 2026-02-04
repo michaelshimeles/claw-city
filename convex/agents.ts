@@ -70,57 +70,69 @@ export const listAgents = query({
   },
   handler: async (ctx, args) => {
     const limit = Math.min(args.limit ?? 50, 100);
-    let agents;
+    let summaries;
 
+    // Use agentSummaries (smaller documents) to avoid byte limit issues
     if (args.status) {
-      agents = await ctx.db
-        .query("agents")
+      summaries = await ctx.db
+        .query("agentSummaries")
         .withIndex("by_status", (q) => q.eq("status", args.status!))
-        .take(500); // Take more to account for filtering
-      // Filter out banned agents
-      if (!args.includeBanned) {
-        agents = agents.filter((a) => !a.bannedAt);
-      }
-      agents = agents.slice(0, limit + 1);
+        .take(limit * 3);
     } else if (args.zoneId) {
-      agents = await ctx.db
-        .query("agents")
-        .withIndex("by_locationZoneId", (q) =>
-          q.eq("locationZoneId", args.zoneId!)
-        )
-        .take(500);
-      // Filter out banned agents
-      if (!args.includeBanned) {
-        agents = agents.filter((a) => !a.bannedAt);
-      }
-      agents = agents.slice(0, limit + 1);
+      summaries = await ctx.db
+        .query("agentSummaries")
+        .withIndex("by_locationZoneId", (q) => q.eq("locationZoneId", args.zoneId!))
+        .take(limit * 3);
     } else {
-      // Query agents directly with limit instead of loading all
-      agents = await ctx.db.query("agents").take(limit * 2 + 1);
-      if (!args.includeBanned) {
-        agents = agents.filter((a) => !a.bannedAt);
-      }
-      agents = agents.slice(0, limit + 1);
+      summaries = await ctx.db.query("agentSummaries").take(limit * 3);
+    }
+
+    // Filter out banned agents
+    if (!args.includeBanned) {
+      summaries = summaries.filter((s) => !s.bannedAt);
     }
 
     // Filter by zoneId if both filters provided
     if (args.status && args.zoneId) {
-      agents = agents.filter((a) => a.locationZoneId === args.zoneId);
+      summaries = summaries.filter((s) => s.locationZoneId === args.zoneId);
     }
+
+    summaries = summaries.slice(0, limit + 1);
 
     // Check if there are more results
-    const hasMore = agents.length > limit;
+    const hasMore = summaries.length > limit;
     if (hasMore) {
-      agents = agents.slice(0, limit);
+      summaries = summaries.slice(0, limit);
     }
 
-    // Don't expose key hashes
-    const safeAgents = agents.map(({ agentKeyHash, ...safeAgent }) => safeAgent);
+    // Map summaries to agent-like objects for backwards compatibility
+    const agents = summaries.map((s) => ({
+      _id: s.agentId,
+      name: s.name,
+      status: s.status,
+      cash: s.cash,
+      heat: s.heat,
+      health: s.health,
+      reputation: s.reputation,
+      locationZoneId: s.locationZoneId,
+      gangId: s.gangId,
+      stats: {
+        lifetimeEarnings: s.lifetimeEarnings,
+        totalCrimes: s.totalCrimes,
+        totalArrests: s.totalArrests,
+        daysSurvived: s.daysSurvived,
+      },
+      socialStats: {
+        giftsGiven: s.giftsGiven ?? 0,
+      },
+      taxOwed: s.taxOwed,
+      bannedAt: s.bannedAt,
+    }));
 
     return {
-      agents: safeAgents,
+      agents,
       hasMore,
-      nextCursor: hasMore && agents.length > 0 ? agents[agents.length - 1]._id : null,
+      nextCursor: hasMore && summaries.length > 0 ? summaries[summaries.length - 1].agentId : null,
     };
   },
 });

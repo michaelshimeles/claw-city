@@ -294,7 +294,8 @@ export default defineSchema({
     .index("by_totalCrimes", ["totalCrimes"])
     .index("by_totalArrests", ["totalArrests"])
     .index("by_daysSurvived", ["daysSurvived"])
-    .index("by_giftsGiven", ["giftsGiven"]),
+    .index("by_giftsGiven", ["giftsGiven"])
+    .index("by_locationZoneId", ["locationZoneId"]),
 
   gangSummaries: defineTable({
     gangId: v.id("gangs"),
