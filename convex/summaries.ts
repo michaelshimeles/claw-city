@@ -540,7 +540,8 @@ export const backfillAgentSummaries = internalMutation({
   args: { batchSize: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const batchSize = Math.max(1, Math.min(args.batchSize ?? 50, 200));
-    const cursor = await getState(ctx, "agent_cursor");
+    // Use separate cursor key to avoid collision with refresh functions
+    const cursor = await getState(ctx, "agent_backfill_cursor");
     const page = await ctx.db
       .query("agents")
       .paginate({ numItems: batchSize, cursor: cursor || null });
@@ -574,7 +575,7 @@ export const backfillAgentSummaries = internalMutation({
         await ctx.db.insert("agentSummaries", payload);
       }
     }
-    await setState(ctx, "agent_cursor", page.isDone ? "" : page.continueCursor);
+    await setState(ctx, "agent_backfill_cursor", page.isDone ? "" : page.continueCursor);
     return { processed: page.page.length, isDone: page.isDone };
   },
 });
@@ -583,7 +584,8 @@ export const backfillZoneSummaries = internalMutation({
   args: { batchSize: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const batchSize = Math.max(1, Math.min(args.batchSize ?? 50, 200));
-    const cursor = await getState(ctx, "zone_cursor");
+    // Use separate cursor key to avoid collision with refresh functions
+    const cursor = await getState(ctx, "zone_backfill_cursor");
     const page = await ctx.db
       .query("zones")
       .paginate({ numItems: batchSize, cursor: cursor || null });
@@ -600,7 +602,7 @@ export const backfillZoneSummaries = internalMutation({
         await ctx.db.insert("zoneSummaries", payload);
       }
     }
-    await setState(ctx, "zone_cursor", page.isDone ? "" : page.continueCursor);
+    await setState(ctx, "zone_backfill_cursor", page.isDone ? "" : page.continueCursor);
     return { processed: page.page.length, isDone: page.isDone };
   },
 });
@@ -609,7 +611,8 @@ export const backfillGangSummaries = internalMutation({
   args: { batchSize: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const batchSize = Math.max(1, Math.min(args.batchSize ?? 50, 200));
-    const cursor = await getState(ctx, "gang_cursor");
+    // Use separate cursor key to avoid collision with refresh functions
+    const cursor = await getState(ctx, "gang_backfill_cursor");
     const page = await ctx.db
       .query("gangs")
       .paginate({ numItems: batchSize, cursor: cursor || null });
@@ -632,7 +635,7 @@ export const backfillGangSummaries = internalMutation({
         await ctx.db.insert("gangSummaries", payload);
       }
     }
-    await setState(ctx, "gang_cursor", page.isDone ? "" : page.continueCursor);
+    await setState(ctx, "gang_backfill_cursor", page.isDone ? "" : page.continueCursor);
     return { processed: page.page.length, isDone: page.isDone };
   },
 });
@@ -641,7 +644,8 @@ export const backfillEventSummaries = internalMutation({
   args: { batchSize: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const batchSize = Math.max(1, Math.min(args.batchSize ?? 50, 200));
-    const cursor = await getState(ctx, "event_cursor");
+    // Use separate cursor key to avoid collision with refresh functions
+    const cursor = await getState(ctx, "event_backfill_cursor");
     const page = await ctx.db
       .query("events")
       .order("asc")
@@ -738,7 +742,7 @@ export const backfillEventSummaries = internalMutation({
         await ctx.db.insert("eventSummaries", payload);
       }
     }
-    await setState(ctx, "event_cursor", page.isDone ? "" : page.continueCursor);
+    await setState(ctx, "event_backfill_cursor", page.isDone ? "" : page.continueCursor);
     return { processed: page.page.length, isDone: page.isDone };
   },
 });
