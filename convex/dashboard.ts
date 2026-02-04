@@ -49,7 +49,7 @@ async function loadZoneNames(
   return zonesById;
 }
 
-async function safeCount(query: any, sampleLimit = 25): Promise<number> {
+async function safeCount(query: any, sampleLimit = AGENT_SAMPLE_LIMIT): Promise<number> {
   if (typeof query.count === "function") {
     return query.count();
   }
