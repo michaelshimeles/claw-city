@@ -436,11 +436,11 @@ export const refreshEventSummaries = internalMutation({
         description,
         dramaDescription: drama.description,
         dramaLevel: drama.dramaLevel,
+        // Payload fields needed by frontend components (RapSheet, AgentTimeline)
         amount:
           typeof eventPayload?.amount === "number"
             ? eventPayload.amount
             : undefined,
-        // Payload fields needed by frontend components (RapSheet, AgentTimeline)
         crimeType:
           typeof eventPayload?.crimeType === "string"
             ? eventPayload.crimeType
@@ -448,6 +448,46 @@ export const refreshEventSummaries = internalMutation({
         loot:
           typeof eventPayload?.loot === "number"
             ? eventPayload.loot
+            : undefined,
+        wage:
+          typeof eventPayload?.wage === "number"
+            ? eventPayload.wage
+            : undefined,
+        jobTitle:
+          typeof eventPayload?.jobTitle === "string"
+            ? eventPayload.jobTitle
+            : undefined,
+        targetName:
+          typeof eventPayload?.targetName === "string"
+            ? eventPayload.targetName
+            : undefined,
+        killerName:
+          typeof eventPayload?.killerName === "string"
+            ? eventPayload.killerName
+            : undefined,
+        winnings:
+          typeof eventPayload?.winnings === "number"
+            ? eventPayload.winnings
+            : undefined,
+        vehicleType:
+          typeof eventPayload?.vehicleType === "string"
+            ? eventPayload.vehicleType
+            : undefined,
+        disguiseType:
+          typeof eventPayload?.type === "string"
+            ? eventPayload.type
+            : undefined,
+        headline:
+          typeof eventPayload?.headline === "string"
+            ? eventPayload.headline
+            : undefined,
+        agency:
+          typeof eventPayload?.agency === "string"
+            ? eventPayload.agency
+            : undefined,
+        gangName:
+          typeof eventPayload?.gangName === "string"
+            ? eventPayload.gangName
             : undefined,
       };
 
@@ -636,11 +676,11 @@ export const backfillEventSummaries = internalMutation({
         description,
         dramaDescription: drama.description,
         dramaLevel: drama.dramaLevel,
+        // Payload fields needed by frontend components (RapSheet, AgentTimeline)
         amount:
           typeof eventPayload?.amount === "number"
             ? eventPayload.amount
             : undefined,
-        // Payload fields needed by frontend components (RapSheet, AgentTimeline)
         crimeType:
           typeof eventPayload?.crimeType === "string"
             ? eventPayload.crimeType
@@ -648,6 +688,46 @@ export const backfillEventSummaries = internalMutation({
         loot:
           typeof eventPayload?.loot === "number"
             ? eventPayload.loot
+            : undefined,
+        wage:
+          typeof eventPayload?.wage === "number"
+            ? eventPayload.wage
+            : undefined,
+        jobTitle:
+          typeof eventPayload?.jobTitle === "string"
+            ? eventPayload.jobTitle
+            : undefined,
+        targetName:
+          typeof eventPayload?.targetName === "string"
+            ? eventPayload.targetName
+            : undefined,
+        killerName:
+          typeof eventPayload?.killerName === "string"
+            ? eventPayload.killerName
+            : undefined,
+        winnings:
+          typeof eventPayload?.winnings === "number"
+            ? eventPayload.winnings
+            : undefined,
+        vehicleType:
+          typeof eventPayload?.vehicleType === "string"
+            ? eventPayload.vehicleType
+            : undefined,
+        disguiseType:
+          typeof eventPayload?.type === "string"
+            ? eventPayload.type
+            : undefined,
+        headline:
+          typeof eventPayload?.headline === "string"
+            ? eventPayload.headline
+            : undefined,
+        agency:
+          typeof eventPayload?.agency === "string"
+            ? eventPayload.agency
+            : undefined,
+        gangName:
+          typeof eventPayload?.gangName === "string"
+            ? eventPayload.gangName
             : undefined,
       };
 

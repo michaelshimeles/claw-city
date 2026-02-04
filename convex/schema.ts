@@ -324,10 +324,20 @@ export default defineSchema({
     description: v.string(),
     dramaDescription: v.optional(v.string()),
     dramaLevel: v.optional(v.string()),
-    amount: v.optional(v.number()),
     // Payload fields needed by frontend components (RapSheet, AgentTimeline)
+    amount: v.optional(v.number()),
     crimeType: v.optional(v.string()),
     loot: v.optional(v.number()),
+    wage: v.optional(v.number()),
+    jobTitle: v.optional(v.string()),
+    targetName: v.optional(v.string()),
+    killerName: v.optional(v.string()),
+    winnings: v.optional(v.number()),
+    vehicleType: v.optional(v.string()),
+    disguiseType: v.optional(v.string()),
+    headline: v.optional(v.string()),
+    agency: v.optional(v.string()),
+    gangName: v.optional(v.string()),
   })
     .index("by_eventId", ["eventId"])
     .index("by_tick", ["tick"])
