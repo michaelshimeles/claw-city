@@ -466,14 +466,21 @@ export const refreshEventSummaries = internalMutation({
 // Coordinator action that calls each mutation sequentially
 // ============================================================================
 
+type RefreshResult = { processed: number; isDone: boolean };
+
 export const refreshSummaries = internalAction({
   args: {},
-  handler: async (ctx) => {
+  handler: async (ctx): Promise<{
+    agentsProcessed: number;
+    zonesProcessed: number;
+    gangsProcessed: number;
+    eventsProcessed: number;
+  }> => {
     // Call each mutation sequentially (each has only one paginated query)
-    const agentResult = await ctx.runMutation(internal.summaries.refreshAgentSummaries, {});
-    const zoneResult = await ctx.runMutation(internal.summaries.refreshZoneSummaries, {});
-    const gangResult = await ctx.runMutation(internal.summaries.refreshGangSummaries, {});
-    const eventResult = await ctx.runMutation(internal.summaries.refreshEventSummaries, {});
+    const agentResult: RefreshResult = await ctx.runMutation(internal.summaries.refreshAgentSummaries, {});
+    const zoneResult: RefreshResult = await ctx.runMutation(internal.summaries.refreshZoneSummaries, {});
+    const gangResult: RefreshResult = await ctx.runMutation(internal.summaries.refreshGangSummaries, {});
+    const eventResult: RefreshResult = await ctx.runMutation(internal.summaries.refreshEventSummaries, {});
 
     return {
       agentsProcessed: agentResult.processed,
@@ -662,18 +669,23 @@ export const backfillSummariesBatch = internalAction({
     zoneBatchSize: v.optional(v.number()),
     gangBatchSize: v.optional(v.number()),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<{
+    agentsProcessed: number;
+    zonesProcessed: number;
+    gangsProcessed: number;
+    eventsProcessed: number;
+  }> => {
     // Call each backfill mutation sequentially
-    const agentResult = await ctx.runMutation(internal.summaries.backfillAgentSummaries, {
+    const agentResult: RefreshResult = await ctx.runMutation(internal.summaries.backfillAgentSummaries, {
       batchSize: args.agentBatchSize,
     });
-    const zoneResult = await ctx.runMutation(internal.summaries.backfillZoneSummaries, {
+    const zoneResult: RefreshResult = await ctx.runMutation(internal.summaries.backfillZoneSummaries, {
       batchSize: args.zoneBatchSize,
     });
-    const gangResult = await ctx.runMutation(internal.summaries.backfillGangSummaries, {
+    const gangResult: RefreshResult = await ctx.runMutation(internal.summaries.backfillGangSummaries, {
       batchSize: args.gangBatchSize,
     });
-    const eventResult = await ctx.runMutation(internal.summaries.backfillEventSummaries, {
+    const eventResult: RefreshResult = await ctx.runMutation(internal.summaries.backfillEventSummaries, {
       batchSize: args.eventBatchSize,
     });
 
