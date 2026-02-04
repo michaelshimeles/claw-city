@@ -29,10 +29,9 @@ export const getZones = query({
   handler: async (ctx) => {
     const zones = await ctx.db.query("zones").collect();
 
-    // Get all agents, jobs, and businesses for counting
-    const allAgents = await ctx.db.query("agents").collect();
-    // Filter out banned agents
-    const agents = allAgents.filter((a) => !a.bannedAt);
+    // Use agentSummaries for counting (avoids OCC on agents table)
+    const allSummaries = await ctx.db.query("agentSummaries").collect();
+    const agents = allSummaries.filter((a) => !a.bannedAt);
     const jobs = await ctx.db
       .query("jobs")
       .filter((q) => q.eq(q.field("active"), true))
@@ -45,8 +44,10 @@ export const getZones = query({
     const businessCountByZone: Record<string, number> = {};
 
     for (const agent of agents) {
-      const zoneId = agent.locationZoneId.toString();
-      agentCountByZone[zoneId] = (agentCountByZone[zoneId] || 0) + 1;
+      const zoneId = agent.locationZoneId?.toString();
+      if (zoneId) {
+        agentCountByZone[zoneId] = (agentCountByZone[zoneId] || 0) + 1;
+      }
     }
 
     for (const job of jobs) {

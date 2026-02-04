@@ -221,7 +221,8 @@ export const getSocialNetwork = query({
 export const getBetrayers = query({
   args: {},
   handler: async (ctx) => {
-    const agents = await ctx.db.query("agents").collect();
+    // Use bounded query to avoid OCC conflicts under high load
+    const agents = await ctx.db.query("agents").take(1000);
 
     const betrayers = agents
       .filter((a) => (a.socialStats?.betrayals ?? 0) > 0)
@@ -229,6 +230,7 @@ export const getBetrayers = query({
         (a, b) =>
           (b.socialStats?.betrayals ?? 0) - (a.socialStats?.betrayals ?? 0)
       )
+      .slice(0, 100) // Return top 100 betrayers
       .map((agent) => ({
         _id: agent._id,
         name: agent.name,
