@@ -6,8 +6,8 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
 
-const AGENT_SAMPLE_LIMIT = 2000;
-const EVENT_FETCH_LIMIT = 300;
+const AGENT_SAMPLE_LIMIT = 30;
+const EVENT_FETCH_LIMIT = 40;
 
 async function loadAgentNames(
   ctx: { db: any },
@@ -49,7 +49,7 @@ async function loadZoneNames(
   return zonesById;
 }
 
-async function safeCount(query: any, sampleLimit = AGENT_SAMPLE_LIMIT): Promise<number> {
+async function safeCount(query: any, sampleLimit = 25): Promise<number> {
   if (typeof query.count === "function") {
     return query.count();
   }
@@ -263,7 +263,8 @@ export const getRecentActivityFeed = query({
     const category = args.category ?? "all";
 
     // Get events ordered by creation time (desc)
-    let events = await ctx.db.query("events").order("desc").take(limit * 3); // Fetch more to filter
+    const fetchLimit = Math.min(EVENT_FETCH_LIMIT, limit * 2);
+    let events = await ctx.db.query("events").order("desc").take(fetchLimit); // Fetch more to filter
 
     // Filter by category if specified
     if (category !== "all") {
@@ -622,10 +623,11 @@ export const getDramaEvents = query({
     const limit = Math.min(args.limit ?? 20, 50);
 
     // Fetch more events to get variety
+    const scanLimit = Math.min(EVENT_FETCH_LIMIT, limit * 2);
     const allEvents = await ctx.db
       .query("events")
       .order("desc")
-      .take(EVENT_FETCH_LIMIT);
+      .take(scanLimit);
 
     // Filter to dramatic events only
     const dramaEvents = allEvents.filter((event) => {
@@ -819,33 +821,39 @@ export const getFollowedAgentEvents = query({
     // Create a Set for fast lookup
     const followedAgentSet = new Set(args.agentIds.map((id) => id.toString()));
 
-    // Fetch recent events
-    const allEvents = await ctx.db
+    const perAgentLimit = Math.max(10, Math.ceil(limit / args.agentIds.length) + 5);
+    const actorEventPages = await Promise.all(
+      args.agentIds.map((agentId) =>
+        ctx.db
+          .query("events")
+          .withIndex("by_agentId", (q) => q.eq("agentId", agentId))
+          .order("desc")
+          .take(perAgentLimit)
+      )
+    );
+
+    const recentEvents = await ctx.db
       .query("events")
       .order("desc")
-      .take(EVENT_FETCH_LIMIT);
+      .take(Math.min(EVENT_FETCH_LIMIT, limit * 2));
 
-    // Filter to events involving followed agents
-    const followedEvents = allEvents.filter((event) => {
-      // Check if the main agent is followed
-      if (event.agentId && followedAgentSet.has(event.agentId.toString())) {
-        return true;
-      }
-
-      // Check if the target agent in payload is followed
+    const targetEvents = recentEvents.filter((event) => {
       const payload = event.payload as Record<string, unknown> | null;
       if (payload?.targetAgentId) {
-        const targetId = payload.targetAgentId as string;
-        if (followedAgentSet.has(targetId)) {
-          return true;
-        }
+        return followedAgentSet.has(payload.targetAgentId as string);
       }
-
       return false;
     });
 
-    // Take the limit
-    const events = followedEvents.slice(0, limit);
+    const mergedEvents = [...actorEventPages.flat(), ...targetEvents];
+    const byId = new Map<string, (typeof mergedEvents)[number]>();
+    for (const event of mergedEvents) {
+      byId.set(event._id.toString(), event);
+    }
+
+    const events = Array.from(byId.values())
+      .sort((a, b) => b.tick - a.tick || b.timestamp - a.timestamp)
+      .slice(0, limit);
 
     const agentsById = await loadAgentNames(
       ctx,
