@@ -1,6 +1,9 @@
 /**
  * Summary maintenance for dashboard/leaderboard reads.
  * Keeps small, read-optimized tables in sync without large reads.
+ *
+ * NOTE: Convex only allows one paginated query per mutation, so we split
+ * the refresh logic into separate mutations for each table type.
  */
 
 import { internal } from "./_generated/api";
@@ -288,15 +291,20 @@ function formatDramaDescription(
   }
 }
 
-export const refreshSummaries = internalMutation({
-  args: {},
-  handler: async (ctx) => {
-    // Agents
-    const agentCursor = await getState(ctx, "agent_cursor");
-    const agentPage = await ctx.db
+// ============================================================================
+// Individual refresh mutations (one paginated query per mutation)
+// ============================================================================
+
+export const refreshAgentSummaries = internalMutation({
+  args: { batchSize: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const batchSize = args.batchSize ?? AGENT_BATCH_SIZE;
+    const cursor = await getState(ctx, "agent_cursor");
+    const page = await ctx.db
       .query("agents")
-      .paginate({ numItems: AGENT_BATCH_SIZE, cursor: agentCursor || null });
-    for (const agent of agentPage.page) {
+      .paginate({ numItems: batchSize, cursor: cursor || null });
+
+    for (const agent of page.page) {
       const existing = await ctx.db
         .query("agentSummaries")
         .withIndex("by_agentId", (q: any) => q.eq("agentId", agent._id))
@@ -325,14 +333,21 @@ export const refreshSummaries = internalMutation({
         await ctx.db.insert("agentSummaries", payload);
       }
     }
-    await setState(ctx, "agent_cursor", agentPage.isDone ? "" : agentPage.continueCursor);
+    await setState(ctx, "agent_cursor", page.isDone ? "" : page.continueCursor);
+    return { processed: page.page.length, isDone: page.isDone };
+  },
+});
 
-    // Zones
-    const zoneCursor = await getState(ctx, "zone_cursor");
-    const zonePage = await ctx.db
+export const refreshZoneSummaries = internalMutation({
+  args: { batchSize: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const batchSize = args.batchSize ?? ZONE_BATCH_SIZE;
+    const cursor = await getState(ctx, "zone_cursor");
+    const page = await ctx.db
       .query("zones")
-      .paginate({ numItems: ZONE_BATCH_SIZE, cursor: zoneCursor || null });
-    for (const zone of zonePage.page) {
+      .paginate({ numItems: batchSize, cursor: cursor || null });
+
+    for (const zone of page.page) {
       const existing = await ctx.db
         .query("zoneSummaries")
         .withIndex("by_zoneId", (q: any) => q.eq("zoneId", zone._id))
@@ -344,14 +359,21 @@ export const refreshSummaries = internalMutation({
         await ctx.db.insert("zoneSummaries", payload);
       }
     }
-    await setState(ctx, "zone_cursor", zonePage.isDone ? "" : zonePage.continueCursor);
+    await setState(ctx, "zone_cursor", page.isDone ? "" : page.continueCursor);
+    return { processed: page.page.length, isDone: page.isDone };
+  },
+});
 
-    // Gangs
-    const gangCursor = await getState(ctx, "gang_cursor");
-    const gangPage = await ctx.db
+export const refreshGangSummaries = internalMutation({
+  args: { batchSize: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const batchSize = args.batchSize ?? GANG_BATCH_SIZE;
+    const cursor = await getState(ctx, "gang_cursor");
+    const page = await ctx.db
       .query("gangs")
-      .paginate({ numItems: GANG_BATCH_SIZE, cursor: gangCursor || null });
-    for (const gang of gangPage.page) {
+      .paginate({ numItems: batchSize, cursor: cursor || null });
+
+    for (const gang of page.page) {
       const existing = await ctx.db
         .query("gangSummaries")
         .withIndex("by_gangId", (q: any) => q.eq("gangId", gang._id))
@@ -369,15 +391,22 @@ export const refreshSummaries = internalMutation({
         await ctx.db.insert("gangSummaries", payload);
       }
     }
-    await setState(ctx, "gang_cursor", gangPage.isDone ? "" : gangPage.continueCursor);
+    await setState(ctx, "gang_cursor", page.isDone ? "" : page.continueCursor);
+    return { processed: page.page.length, isDone: page.isDone };
+  },
+});
 
-    // Events (walk forward over time)
-    const eventCursor = await getState(ctx, "event_cursor");
-    const eventPage = await ctx.db
+export const refreshEventSummaries = internalMutation({
+  args: { batchSize: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const batchSize = args.batchSize ?? EVENT_BATCH_SIZE;
+    const cursor = await getState(ctx, "event_cursor");
+    const page = await ctx.db
       .query("events")
       .order("asc")
-      .paginate({ numItems: EVENT_BATCH_SIZE, cursor: eventCursor || null });
-    for (const event of eventPage.page) {
+      .paginate({ numItems: batchSize, cursor: cursor || null });
+
+    for (const event of page.page) {
       const existing = await ctx.db
         .query("eventSummaries")
         .withIndex("by_eventId", (q: any) => q.eq("eventId", event._id))
@@ -428,18 +457,205 @@ export const refreshSummaries = internalMutation({
         await ctx.db.insert("eventSummaries", payload);
       }
     }
-    await setState(ctx, "event_cursor", eventPage.isDone ? "" : eventPage.continueCursor);
+    await setState(ctx, "event_cursor", page.isDone ? "" : page.continueCursor);
+    return { processed: page.page.length, isDone: page.isDone };
+  },
+});
+
+// ============================================================================
+// Coordinator action that calls each mutation sequentially
+// ============================================================================
+
+export const refreshSummaries = internalAction({
+  args: {},
+  handler: async (ctx) => {
+    // Call each mutation sequentially (each has only one paginated query)
+    const agentResult = await ctx.runMutation(internal.summaries.refreshAgentSummaries, {});
+    const zoneResult = await ctx.runMutation(internal.summaries.refreshZoneSummaries, {});
+    const gangResult = await ctx.runMutation(internal.summaries.refreshGangSummaries, {});
+    const eventResult = await ctx.runMutation(internal.summaries.refreshEventSummaries, {});
 
     return {
-      agentsProcessed: agentPage.page.length,
-      zonesProcessed: zonePage.page.length,
-      gangsProcessed: gangPage.page.length,
-      eventsProcessed: eventPage.page.length,
+      agentsProcessed: agentResult.processed,
+      zonesProcessed: zoneResult.processed,
+      gangsProcessed: gangResult.processed,
+      eventsProcessed: eventResult.processed,
     };
   },
 });
 
-export const backfillSummariesBatch = internalMutation({
+// ============================================================================
+// Backfill functions (for bulk initial population)
+// ============================================================================
+
+export const backfillAgentSummaries = internalMutation({
+  args: { batchSize: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const batchSize = Math.max(1, Math.min(args.batchSize ?? 25, 200));
+    const cursor = await getState(ctx, "agent_cursor");
+    const page = await ctx.db
+      .query("agents")
+      .paginate({ numItems: batchSize, cursor: cursor || null });
+
+    for (const agent of page.page) {
+      const existing = await ctx.db
+        .query("agentSummaries")
+        .withIndex("by_agentId", (q: any) => q.eq("agentId", agent._id))
+        .first();
+      const payload = {
+        agentId: agent._id,
+        name: agent.name,
+        status: agent.status,
+        cash: agent.cash,
+        heat: agent.heat,
+        health: agent.health,
+        reputation: agent.reputation,
+        locationZoneId: agent.locationZoneId ?? null,
+        gangId: agent.gangId,
+        lifetimeEarnings: agent.stats.lifetimeEarnings,
+        totalCrimes: agent.stats.totalCrimes,
+        totalArrests: agent.stats.totalArrests,
+        daysSurvived: agent.stats.daysSurvived,
+        giftsGiven: agent.socialStats?.giftsGiven ?? 0,
+        taxOwed: agent.taxOwed,
+        bannedAt: agent.bannedAt,
+      };
+      if (existing) {
+        await ctx.db.patch(existing._id, payload);
+      } else {
+        await ctx.db.insert("agentSummaries", payload);
+      }
+    }
+    await setState(ctx, "agent_cursor", page.isDone ? "" : page.continueCursor);
+    return { processed: page.page.length, isDone: page.isDone };
+  },
+});
+
+export const backfillZoneSummaries = internalMutation({
+  args: { batchSize: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const batchSize = Math.max(1, Math.min(args.batchSize ?? 25, 200));
+    const cursor = await getState(ctx, "zone_cursor");
+    const page = await ctx.db
+      .query("zones")
+      .paginate({ numItems: batchSize, cursor: cursor || null });
+
+    for (const zone of page.page) {
+      const existing = await ctx.db
+        .query("zoneSummaries")
+        .withIndex("by_zoneId", (q: any) => q.eq("zoneId", zone._id))
+        .first();
+      const payload = { zoneId: zone._id, name: zone.name, slug: zone.slug };
+      if (existing) {
+        await ctx.db.patch(existing._id, payload);
+      } else {
+        await ctx.db.insert("zoneSummaries", payload);
+      }
+    }
+    await setState(ctx, "zone_cursor", page.isDone ? "" : page.continueCursor);
+    return { processed: page.page.length, isDone: page.isDone };
+  },
+});
+
+export const backfillGangSummaries = internalMutation({
+  args: { batchSize: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const batchSize = Math.max(1, Math.min(args.batchSize ?? 25, 200));
+    const cursor = await getState(ctx, "gang_cursor");
+    const page = await ctx.db
+      .query("gangs")
+      .paginate({ numItems: batchSize, cursor: cursor || null });
+
+    for (const gang of page.page) {
+      const existing = await ctx.db
+        .query("gangSummaries")
+        .withIndex("by_gangId", (q: any) => q.eq("gangId", gang._id))
+        .first();
+      const payload = {
+        gangId: gang._id,
+        name: gang.name,
+        tag: gang.tag,
+        color: gang.color,
+        disbandedAt: gang.disbandedAt,
+      };
+      if (existing) {
+        await ctx.db.patch(existing._id, payload);
+      } else {
+        await ctx.db.insert("gangSummaries", payload);
+      }
+    }
+    await setState(ctx, "gang_cursor", page.isDone ? "" : page.continueCursor);
+    return { processed: page.page.length, isDone: page.isDone };
+  },
+});
+
+export const backfillEventSummaries = internalMutation({
+  args: { batchSize: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const batchSize = Math.max(1, Math.min(args.batchSize ?? 25, 200));
+    const cursor = await getState(ctx, "event_cursor");
+    const page = await ctx.db
+      .query("events")
+      .order("asc")
+      .paginate({ numItems: batchSize, cursor: cursor || null });
+
+    for (const event of page.page) {
+      const existing = await ctx.db
+        .query("eventSummaries")
+        .withIndex("by_eventId", (q: any) => q.eq("eventId", event._id))
+        .first();
+
+      const agentName = await resolveAgentName(ctx, event.agentId?.toString());
+      const zoneName = await resolveZoneName(ctx, event.zoneId?.toString());
+      const category = classifyEvent(event.type);
+      const description = formatEventDescription(event.type, agentName, zoneName, event.payload);
+      const drama = formatDramaDescription(event.type, agentName, zoneName, event.payload);
+
+      const eventPayload = event.payload as Record<string, unknown> | null;
+      const payload = {
+        eventId: event._id,
+        type: event.type,
+        tick: event.tick,
+        timestamp: event.timestamp,
+        agentId: event.agentId ?? null,
+        agentName: agentName ?? undefined,
+        zoneId: event.zoneId ?? null,
+        zoneName: zoneName ?? undefined,
+        targetAgentId:
+          typeof eventPayload?.targetAgentId === "string"
+            ? eventPayload.targetAgentId
+            : null,
+        category,
+        description,
+        dramaDescription: drama.description,
+        dramaLevel: drama.dramaLevel,
+        amount:
+          typeof eventPayload?.amount === "number"
+            ? eventPayload.amount
+            : undefined,
+        // Payload fields needed by frontend components (RapSheet, AgentTimeline)
+        crimeType:
+          typeof eventPayload?.crimeType === "string"
+            ? eventPayload.crimeType
+            : undefined,
+        loot:
+          typeof eventPayload?.loot === "number"
+            ? eventPayload.loot
+            : undefined,
+      };
+
+      if (existing) {
+        await ctx.db.patch(existing._id, payload);
+      } else {
+        await ctx.db.insert("eventSummaries", payload);
+      }
+    }
+    await setState(ctx, "event_cursor", page.isDone ? "" : page.continueCursor);
+    return { processed: page.page.length, isDone: page.isDone };
+  },
+});
+
+export const backfillSummariesBatch = internalAction({
   args: {
     agentBatchSize: v.optional(v.number()),
     eventBatchSize: v.optional(v.number()),
@@ -447,151 +663,25 @@ export const backfillSummariesBatch = internalMutation({
     gangBatchSize: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const agentBatchSize = Math.max(1, Math.min(args.agentBatchSize ?? 25, 200));
-    const eventBatchSize = Math.max(1, Math.min(args.eventBatchSize ?? 25, 200));
-    const zoneBatchSize = Math.max(1, Math.min(args.zoneBatchSize ?? 25, 200));
-    const gangBatchSize = Math.max(1, Math.min(args.gangBatchSize ?? 25, 200));
-
-    const agentCursor = await getState(ctx, "agent_cursor");
-    const agentPage = await ctx.db
-      .query("agents")
-      .paginate({ numItems: agentBatchSize, cursor: agentCursor || null });
-    for (const agent of agentPage.page) {
-      const existing = await ctx.db
-        .query("agentSummaries")
-        .withIndex("by_agentId", (q: any) => q.eq("agentId", agent._id))
-        .first();
-      const payload = {
-        agentId: agent._id,
-        name: agent.name,
-        status: agent.status,
-        cash: agent.cash,
-        heat: agent.heat,
-        health: agent.health,
-        reputation: agent.reputation,
-        locationZoneId: agent.locationZoneId ?? null,
-        gangId: agent.gangId,
-        lifetimeEarnings: agent.stats.lifetimeEarnings,
-        totalCrimes: agent.stats.totalCrimes,
-        totalArrests: agent.stats.totalArrests,
-        daysSurvived: agent.stats.daysSurvived,
-        giftsGiven: agent.socialStats?.giftsGiven ?? 0,
-        taxOwed: agent.taxOwed,
-        bannedAt: agent.bannedAt,
-      };
-      if (existing) {
-        await ctx.db.patch(existing._id, payload);
-      } else {
-        await ctx.db.insert("agentSummaries", payload);
-      }
-    }
-    await setState(ctx, "agent_cursor", agentPage.isDone ? "" : agentPage.continueCursor);
-
-    const zoneCursor = await getState(ctx, "zone_cursor");
-    const zonePage = await ctx.db
-      .query("zones")
-      .paginate({ numItems: zoneBatchSize, cursor: zoneCursor || null });
-    for (const zone of zonePage.page) {
-      const existing = await ctx.db
-        .query("zoneSummaries")
-        .withIndex("by_zoneId", (q: any) => q.eq("zoneId", zone._id))
-        .first();
-      const payload = { zoneId: zone._id, name: zone.name, slug: zone.slug };
-      if (existing) {
-        await ctx.db.patch(existing._id, payload);
-      } else {
-        await ctx.db.insert("zoneSummaries", payload);
-      }
-    }
-    await setState(ctx, "zone_cursor", zonePage.isDone ? "" : zonePage.continueCursor);
-
-    const gangCursor = await getState(ctx, "gang_cursor");
-    const gangPage = await ctx.db
-      .query("gangs")
-      .paginate({ numItems: gangBatchSize, cursor: gangCursor || null });
-    for (const gang of gangPage.page) {
-      const existing = await ctx.db
-        .query("gangSummaries")
-        .withIndex("by_gangId", (q: any) => q.eq("gangId", gang._id))
-        .first();
-      const payload = {
-        gangId: gang._id,
-        name: gang.name,
-        tag: gang.tag,
-        color: gang.color,
-        disbandedAt: gang.disbandedAt,
-      };
-      if (existing) {
-        await ctx.db.patch(existing._id, payload);
-      } else {
-        await ctx.db.insert("gangSummaries", payload);
-      }
-    }
-    await setState(ctx, "gang_cursor", gangPage.isDone ? "" : gangPage.continueCursor);
-
-    const eventCursor = await getState(ctx, "event_cursor");
-    const eventPage = await ctx.db
-      .query("events")
-      .order("asc")
-      .paginate({ numItems: eventBatchSize, cursor: eventCursor || null });
-    for (const event of eventPage.page) {
-      const existing = await ctx.db
-        .query("eventSummaries")
-        .withIndex("by_eventId", (q: any) => q.eq("eventId", event._id))
-        .first();
-
-      const agentName = await resolveAgentName(ctx, event.agentId?.toString());
-      const zoneName = await resolveZoneName(ctx, event.zoneId?.toString());
-      const category = classifyEvent(event.type);
-      const description = formatEventDescription(event.type, agentName, zoneName, event.payload);
-      const drama = formatDramaDescription(event.type, agentName, zoneName, event.payload);
-
-      const eventPayload = event.payload as Record<string, unknown> | null;
-      const payload = {
-        eventId: event._id,
-        type: event.type,
-        tick: event.tick,
-        timestamp: event.timestamp,
-        agentId: event.agentId ?? null,
-        agentName: agentName ?? undefined,
-        zoneId: event.zoneId ?? null,
-        zoneName: zoneName ?? undefined,
-        targetAgentId:
-          typeof eventPayload?.targetAgentId === "string"
-            ? eventPayload.targetAgentId
-            : null,
-        category,
-        description,
-        dramaDescription: drama.description,
-        dramaLevel: drama.dramaLevel,
-        amount:
-          typeof eventPayload?.amount === "number"
-            ? eventPayload.amount
-            : undefined,
-        // Payload fields needed by frontend components (RapSheet, AgentTimeline)
-        crimeType:
-          typeof eventPayload?.crimeType === "string"
-            ? eventPayload.crimeType
-            : undefined,
-        loot:
-          typeof eventPayload?.loot === "number"
-            ? eventPayload.loot
-            : undefined,
-      };
-
-      if (existing) {
-        await ctx.db.patch(existing._id, payload);
-      } else {
-        await ctx.db.insert("eventSummaries", payload);
-      }
-    }
-    await setState(ctx, "event_cursor", eventPage.isDone ? "" : eventPage.continueCursor);
+    // Call each backfill mutation sequentially
+    const agentResult = await ctx.runMutation(internal.summaries.backfillAgentSummaries, {
+      batchSize: args.agentBatchSize,
+    });
+    const zoneResult = await ctx.runMutation(internal.summaries.backfillZoneSummaries, {
+      batchSize: args.zoneBatchSize,
+    });
+    const gangResult = await ctx.runMutation(internal.summaries.backfillGangSummaries, {
+      batchSize: args.gangBatchSize,
+    });
+    const eventResult = await ctx.runMutation(internal.summaries.backfillEventSummaries, {
+      batchSize: args.eventBatchSize,
+    });
 
     return {
-      agentsProcessed: agentPage.page.length,
-      zonesProcessed: zonePage.page.length,
-      gangsProcessed: gangPage.page.length,
-      eventsProcessed: eventPage.page.length,
+      agentsProcessed: agentResult.processed,
+      zonesProcessed: zoneResult.processed,
+      gangsProcessed: gangResult.processed,
+      eventsProcessed: eventResult.processed,
     };
   },
 });
@@ -613,7 +703,7 @@ export const runSummaryBackfill = internalAction({
       eventsProcessed: 0,
     };
     for (let i = 0; i < iterations; i++) {
-      const result = await ctx.runMutation(internal.summaries.backfillSummariesBatch, {
+      const result = await ctx.runAction(internal.summaries.backfillSummariesBatch, {
         agentBatchSize: args.agentBatchSize,
         eventBatchSize: args.eventBatchSize,
         zoneBatchSize: args.zoneBatchSize,

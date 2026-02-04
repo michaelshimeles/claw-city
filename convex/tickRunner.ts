@@ -158,8 +158,8 @@ async function runTickHandler(ctx: ActionCtx): Promise<TickRunResult> {
     taxEvaders: taxResult.evaded,
   });
 
-  // 14. Refresh summaries (small batch)
-  const _summaryResult: SummaryResult = await ctx.runMutation(internal.summaries.refreshSummaries);
+  // 14. Refresh summaries (small batch) - now an action that coordinates mutations
+  const _summaryResult: SummaryResult = await ctx.runAction(internal.summaries.refreshSummaries, {});
 
   return {
     skipped: false,
