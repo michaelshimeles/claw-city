@@ -6,7 +6,7 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
 
-const AGENT_SAMPLE_LIMIT = 2000;
+const AGENT_SAMPLE_LIMIT = 30;
 
 async function loadZoneNames(
   ctx: { db: any },

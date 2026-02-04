@@ -214,29 +214,39 @@ export const processHeatDecay = internalMutation({
 
     const { heatDecayIdle, heatDecayBusy } = world.config;
 
-    // Get all agents
-    const agents = await ctx.db.query("agents").collect();
-
     let processedCount = 0;
 
-    for (const agent of agents) {
-      if (agent.heat > 0) {
-        // Determine decay rate based on status
-        const decayRate =
-          agent.status === "idle" || agent.status === "jailed" || agent.status === "hospitalized"
-            ? heatDecayIdle
-            : heatDecayBusy;
+    let cursor: string | null = null;
+    let isDone = false;
+    while (!isDone) {
+      const { page, isDone: done, continueCursor } = await ctx.db
+        .query("agents")
+        .paginate({ numItems: 200, cursor });
 
-        // Apply decay (minimum 0)
-        const newHeat = Math.max(0, agent.heat - decayRate);
+      for (const agent of page) {
+        if (agent.heat > 0) {
+          // Determine decay rate based on status
+          const decayRate =
+            agent.status === "idle" ||
+            agent.status === "jailed" ||
+            agent.status === "hospitalized"
+              ? heatDecayIdle
+              : heatDecayBusy;
 
-        if (newHeat !== agent.heat) {
-          await ctx.db.patch(agent._id, {
-            heat: newHeat,
-          });
-          processedCount++;
+          // Apply decay (minimum 0)
+          const newHeat = Math.max(0, agent.heat - decayRate);
+
+          if (newHeat !== agent.heat) {
+            await ctx.db.patch(agent._id, {
+              heat: newHeat,
+            });
+            processedCount++;
+          }
         }
       }
+
+      cursor = continueCursor ?? null;
+      isDone = done;
     }
 
     return { processed: processedCount };
@@ -1007,9 +1017,6 @@ export const processTaxes = internalMutation({
     const rng = createTickRng(args.seed, args.tick);
     const currentTick = world.tick;
 
-    // Get all agents
-    const agents = await ctx.db.query("agents").collect();
-
     let assessed = 0;
     let paid = 0;
     let evaded = 0;
@@ -1031,211 +1038,222 @@ export const processTaxes = internalMutation({
       .withIndex("by_slug", (q) => q.eq("slug", "police_station"))
       .first();
 
-    for (const agent of agents) {
-      // Skip jailed/hospitalized agents - they still owe taxes but can't pay
-      // Their grace period just keeps ticking
+    let cursor: string | null = null;
+    let isDone = false;
+    while (!isDone) {
+      const { page, isDone: done, continueCursor } = await ctx.db
+        .query("agents")
+        .paginate({ numItems: 200, cursor });
 
-      // Check if agent has taxes currently owed
-      if (agent.taxOwed && agent.taxOwed > 0 && agent.taxGracePeriodEnd) {
-        // Check if grace period has expired
-        if (currentTick >= agent.taxGracePeriodEnd) {
-          // Try to auto-pay if agent has cash
-          if (agent.cash >= agent.taxOwed) {
-            // Auto-pay taxes
-            const newCash = agent.cash - agent.taxOwed;
-            await ctx.db.patch(agent._id, {
-              cash: newCash,
-              taxOwed: undefined,
-              taxGracePeriodEnd: undefined,
-              taxDueTick: currentTick + TAX_DEFAULTS.taxIntervalTicks,
-            });
+      for (const agent of page) {
+        // Skip jailed/hospitalized agents - they still owe taxes but can't pay
+        // Their grace period just keeps ticking
 
-            // Update government revenue
-            if (government) {
-              await ctx.db.patch(government._id, {
-                totalTaxRevenue: government.totalTaxRevenue + agent.taxOwed,
+        // Check if agent has taxes currently owed
+        if (agent.taxOwed && agent.taxOwed > 0 && agent.taxGracePeriodEnd) {
+          // Check if grace period has expired
+          if (currentTick >= agent.taxGracePeriodEnd) {
+            // Try to auto-pay if agent has cash
+            if (agent.cash >= agent.taxOwed) {
+              // Auto-pay taxes
+              const newCash = agent.cash - agent.taxOwed;
+              await ctx.db.patch(agent._id, {
+                cash: newCash,
+                taxOwed: undefined,
+                taxGracePeriodEnd: undefined,
+                taxDueTick: currentTick + TAX_DEFAULTS.taxIntervalTicks,
               });
-            }
 
-            // Log TAX_PAID event
-            await ctx.db.insert("events", {
-              tick: currentTick,
-              timestamp: Date.now(),
-              type: "TAX_PAID",
-              agentId: agent._id,
-              zoneId: agent.locationZoneId,
-              entityId: null,
-              payload: {
-                amount: agent.taxOwed,
-                method: "auto",
-                newCash,
-              },
-              requestId: null,
-            });
-
-            // Ledger entry
-            await ctx.db.insert("ledger", {
-              tick: currentTick,
-              agentId: agent._id,
-              type: "debit",
-              amount: agent.taxOwed,
-              reason: "TAX_PAYMENT",
-              balance: newCash,
-              refEventId: null,
-            });
-
-            paid++;
-          } else {
-            // TAX EVASION - Agent cannot pay
-            // 1. Jail the agent
-            // 2. Seize 50% of remaining cash
-            // 3. Seize random inventory items
-
-            const jailDuration = rng.randomInt(
-              TAX_DEFAULTS.taxEvasionJailDurationMin,
-              TAX_DEFAULTS.taxEvasionJailDurationMax
-            );
-
-            // Calculate cash seizure
-            const cashSeized = Math.floor(agent.cash * TAX_DEFAULTS.assetSeizurePercentage);
-            const newCash = agent.cash - cashSeized;
-
-            // Seize random inventory items (1-3 items if they have any)
-            let itemsSeized = 0;
-            let newInventory = [...agent.inventory];
-            if (newInventory.length > 0) {
-              const itemsToSeize = Math.min(
-                newInventory.length,
-                rng.randomInt(1, 3)
-              );
-              for (let i = 0; i < itemsToSeize; i++) {
-                if (newInventory.length === 0) break;
-                const indexToRemove = rng.randomInt(0, newInventory.length - 1);
-                itemsSeized += newInventory[indexToRemove].qty;
-                newInventory.splice(indexToRemove, 1);
+              // Update government revenue
+              if (government) {
+                await ctx.db.patch(government._id, {
+                  totalTaxRevenue: government.totalTaxRevenue + agent.taxOwed,
+                });
               }
-            }
 
-            // Apply penalties
-            await ctx.db.patch(agent._id, {
-              status: "jailed",
-              busyUntilTick: currentTick + jailDuration,
-              busyAction: "TAX_EVASION",
-              cash: newCash,
-              inventory: newInventory,
-              reputation: agent.reputation - TAX_DEFAULTS.taxEvasionReputationPenalty,
-              locationZoneId: policeStation?._id ?? agent.locationZoneId,
-              taxOwed: undefined,
-              taxGracePeriodEnd: undefined,
-              taxDueTick: currentTick + jailDuration + TAX_DEFAULTS.taxIntervalTicks,
-            });
-
-            // Update government seizures
-            if (government) {
-              await ctx.db.patch(government._id, {
-                totalSeizedCash: government.totalSeizedCash + cashSeized,
-                totalSeizedItems: government.totalSeizedItems + itemsSeized,
+              // Log TAX_PAID event
+              await ctx.db.insert("events", {
+                tick: currentTick,
+                timestamp: Date.now(),
+                type: "TAX_PAID",
+                agentId: agent._id,
+                zoneId: agent.locationZoneId,
+                entityId: null,
+                payload: {
+                  amount: agent.taxOwed,
+                  method: "auto",
+                  newCash,
+                },
+                requestId: null,
               });
-            }
 
-            // Log TAX_EVADED event
-            await ctx.db.insert("events", {
-              tick: currentTick,
-              timestamp: Date.now(),
-              type: "TAX_EVADED",
-              agentId: agent._id,
-              zoneId: policeStation?._id ?? null,
-              entityId: null,
-              payload: {
-                taxOwed: agent.taxOwed,
-                cashAvailable: agent.cash,
-                jailDuration,
-                releaseAtTick: currentTick + jailDuration,
-              },
-              requestId: null,
-            });
-
-            // Log ASSETS_SEIZED event
-            await ctx.db.insert("events", {
-              tick: currentTick,
-              timestamp: Date.now(),
-              type: "ASSETS_SEIZED",
-              agentId: agent._id,
-              zoneId: policeStation?._id ?? null,
-              entityId: null,
-              payload: {
-                cashSeized,
-                itemsSeized,
-                reputationLost: TAX_DEFAULTS.taxEvasionReputationPenalty,
-              },
-              requestId: null,
-            });
-
-            // Ledger entry for seizure
-            if (cashSeized > 0) {
+              // Ledger entry
               await ctx.db.insert("ledger", {
                 tick: currentTick,
                 agentId: agent._id,
                 type: "debit",
-                amount: cashSeized,
-                reason: "TAX_SEIZURE",
+                amount: agent.taxOwed,
+                reason: "TAX_PAYMENT",
                 balance: newCash,
                 refEventId: null,
               });
-            }
 
-            evaded++;
+              paid++;
+            } else {
+              // TAX EVASION - Agent cannot pay
+              // 1. Jail the agent
+              // 2. Seize 50% of remaining cash
+              // 3. Seize random inventory items
+
+              const jailDuration = rng.randomInt(
+                TAX_DEFAULTS.taxEvasionJailDurationMin,
+                TAX_DEFAULTS.taxEvasionJailDurationMax
+              );
+
+              // Calculate cash seizure
+              const cashSeized = Math.floor(agent.cash * TAX_DEFAULTS.assetSeizurePercentage);
+              const newCash = agent.cash - cashSeized;
+
+              // Seize random inventory items (1-3 items if they have any)
+              let itemsSeized = 0;
+              let newInventory = [...agent.inventory];
+              if (newInventory.length > 0) {
+                const itemsToSeize = Math.min(
+                  newInventory.length,
+                  rng.randomInt(1, 3)
+                );
+                for (let i = 0; i < itemsToSeize; i++) {
+                  if (newInventory.length === 0) break;
+                  const indexToRemove = rng.randomInt(0, newInventory.length - 1);
+                  itemsSeized += newInventory[indexToRemove].qty;
+                  newInventory.splice(indexToRemove, 1);
+                }
+              }
+
+              // Apply penalties
+              await ctx.db.patch(agent._id, {
+                status: "jailed",
+                busyUntilTick: currentTick + jailDuration,
+                busyAction: "TAX_EVASION",
+                cash: newCash,
+                inventory: newInventory,
+                reputation: agent.reputation - TAX_DEFAULTS.taxEvasionReputationPenalty,
+                locationZoneId: policeStation?._id ?? agent.locationZoneId,
+                taxOwed: undefined,
+                taxGracePeriodEnd: undefined,
+                taxDueTick: currentTick + jailDuration + TAX_DEFAULTS.taxIntervalTicks,
+              });
+
+              // Update government seizures
+              if (government) {
+                await ctx.db.patch(government._id, {
+                  totalSeizedCash: government.totalSeizedCash + cashSeized,
+                  totalSeizedItems: government.totalSeizedItems + itemsSeized,
+                });
+              }
+
+              // Log TAX_EVADED event
+              await ctx.db.insert("events", {
+                tick: currentTick,
+                timestamp: Date.now(),
+                type: "TAX_EVADED",
+                agentId: agent._id,
+                zoneId: policeStation?._id ?? null,
+                entityId: null,
+                payload: {
+                  taxOwed: agent.taxOwed,
+                  cashAvailable: agent.cash,
+                  jailDuration,
+                  releaseAtTick: currentTick + jailDuration,
+                },
+                requestId: null,
+              });
+
+              // Log ASSETS_SEIZED event
+              await ctx.db.insert("events", {
+                tick: currentTick,
+                timestamp: Date.now(),
+                type: "ASSETS_SEIZED",
+                agentId: agent._id,
+                zoneId: policeStation?._id ?? null,
+                entityId: null,
+                payload: {
+                  cashSeized,
+                  itemsSeized,
+                  reputationLost: TAX_DEFAULTS.taxEvasionReputationPenalty,
+                },
+                requestId: null,
+              });
+
+              // Ledger entry for seizure
+              if (cashSeized > 0) {
+                await ctx.db.insert("ledger", {
+                  tick: currentTick,
+                  agentId: agent._id,
+                  type: "debit",
+                  amount: cashSeized,
+                  reason: "TAX_SEIZURE",
+                  balance: newCash,
+                  refEventId: null,
+                });
+              }
+
+              evaded++;
+            }
+          }
+          // If grace period hasn't expired yet, do nothing - let them pay manually
+          continue;
+        }
+
+        // Check if it's time for a new tax assessment
+        if (agent.taxDueTick && currentTick >= agent.taxDueTick) {
+          // Calculate wealth and tax owed
+          const wealth = await calculateAgentWealth(ctx, agent);
+          const taxOwed = calculateTaxOwed(wealth);
+
+          if (taxOwed > 0) {
+            // Assess taxes
+            await ctx.db.patch(agent._id, {
+              taxOwed,
+              taxGracePeriodEnd: currentTick + TAX_DEFAULTS.taxGracePeriodTicks,
+              taxDueTick: undefined, // Will be set when paid or after jail
+            });
+
+            // Log TAX_DUE event
+            await ctx.db.insert("events", {
+              tick: currentTick,
+              timestamp: Date.now(),
+              type: "TAX_DUE",
+              agentId: agent._id,
+              zoneId: agent.locationZoneId,
+              entityId: null,
+              payload: {
+                wealth,
+                taxOwed,
+                gracePeriodEnd: currentTick + TAX_DEFAULTS.taxGracePeriodTicks,
+              },
+              requestId: null,
+            });
+
+            assessed++;
+          } else {
+            // No tax owed (too poor), schedule next assessment
+            await ctx.db.patch(agent._id, {
+              taxDueTick: currentTick + TAX_DEFAULTS.taxIntervalTicks,
+            });
           }
         }
-        // If grace period hasn't expired yet, do nothing - let them pay manually
-        continue;
-      }
 
-      // Check if it's time for a new tax assessment
-      if (agent.taxDueTick && currentTick >= agent.taxDueTick) {
-        // Calculate wealth and tax owed
-        const wealth = await calculateAgentWealth(ctx, agent);
-        const taxOwed = calculateTaxOwed(wealth);
-
-        if (taxOwed > 0) {
-          // Assess taxes
-          await ctx.db.patch(agent._id, {
-            taxOwed,
-            taxGracePeriodEnd: currentTick + TAX_DEFAULTS.taxGracePeriodTicks,
-            taxDueTick: undefined, // Will be set when paid or after jail
-          });
-
-          // Log TAX_DUE event
-          await ctx.db.insert("events", {
-            tick: currentTick,
-            timestamp: Date.now(),
-            type: "TAX_DUE",
-            agentId: agent._id,
-            zoneId: agent.locationZoneId,
-            entityId: null,
-            payload: {
-              wealth,
-              taxOwed,
-              gracePeriodEnd: currentTick + TAX_DEFAULTS.taxGracePeriodTicks,
-            },
-            requestId: null,
-          });
-
-          assessed++;
-        } else {
-          // No tax owed (too poor), schedule next assessment
+        // If agent has no taxDueTick set, set one (for existing agents)
+        if (!agent.taxDueTick && !agent.taxOwed) {
           await ctx.db.patch(agent._id, {
             taxDueTick: currentTick + TAX_DEFAULTS.taxIntervalTicks,
           });
         }
       }
 
-      // If agent has no taxDueTick set, set one (for existing agents)
-      if (!agent.taxDueTick && !agent.taxOwed) {
-        await ctx.db.patch(agent._id, {
-          taxDueTick: currentTick + TAX_DEFAULTS.taxIntervalTicks,
-        });
-      }
+      cursor = continueCursor ?? null;
+      isDone = done;
     }
 
     return { assessed, paid, evaded };
@@ -1337,36 +1355,44 @@ export const processDisguiseExpiration = internalMutation({
 
     const currentTick = world.tick;
 
-    // Find all disguises
-    const disguises = await ctx.db.query("disguises").collect();
-
     let expired = 0;
 
-    for (const disguise of disguises) {
-      if (disguise.expiresAtTick <= currentTick) {
-        // Get agent for event logging
-        const agent = await ctx.db.get(disguise.agentId);
+    let cursor: string | null = null;
+    let isDone = false;
+    while (!isDone) {
+      const { page, isDone: done, continueCursor } = await ctx.db
+        .query("disguises")
+        .paginate({ numItems: 200, cursor });
 
-        // Delete the disguise
-        await ctx.db.delete(disguise._id);
+      for (const disguise of page) {
+        if (disguise.expiresAtTick <= currentTick) {
+          // Get agent for event logging
+          const agent = await ctx.db.get(disguise.agentId);
 
-        // Log expiration event
-        await ctx.db.insert("events", {
-          tick: currentTick,
-          timestamp: Date.now(),
-          type: "DISGUISE_EXPIRED",
-          agentId: disguise.agentId,
-          zoneId: agent?.locationZoneId ?? null,
-          entityId: null,
-          payload: {
-            disguiseType: disguise.type,
-            heatReduction: disguise.heatReduction,
-          },
-          requestId: null,
-        });
+          // Delete the disguise
+          await ctx.db.delete(disguise._id);
 
-        expired++;
+          // Log expiration event
+          await ctx.db.insert("events", {
+            tick: currentTick,
+            timestamp: Date.now(),
+            type: "DISGUISE_EXPIRED",
+            agentId: disguise.agentId,
+            zoneId: agent?.locationZoneId ?? null,
+            entityId: null,
+            payload: {
+              disguiseType: disguise.type,
+              heatReduction: disguise.heatReduction,
+            },
+            requestId: null,
+          });
+
+          expired++;
+        }
       }
+
+      cursor = continueCursor ?? null;
+      isDone = done;
     }
 
     return { expired };
@@ -1387,46 +1413,66 @@ export const processHeatDecayWithDisguise = internalMutation({
 
     const { heatDecayIdle, heatDecayBusy } = world.config;
 
-    // Get all agents
-    const agents = await ctx.db.query("agents").collect();
-
     // Get all active disguises for quick lookup
-    const disguises = await ctx.db.query("disguises").collect();
     const disguiseByAgentId: Record<string, { heatReduction: number }> = {};
-    for (const disguise of disguises) {
-      if (disguise.expiresAtTick > world.tick) {
-        disguiseByAgentId[disguise.agentId.toString()] = {
-          heatReduction: disguise.heatReduction,
-        };
+    let disguiseCursor: string | null = null;
+    let disguisesDone = false;
+    while (!disguisesDone) {
+      const { page, isDone, continueCursor } = await ctx.db
+        .query("disguises")
+        .paginate({ numItems: 200, cursor: disguiseCursor });
+
+      for (const disguise of page) {
+        if (disguise.expiresAtTick > world.tick) {
+          disguiseByAgentId[disguise.agentId.toString()] = {
+            heatReduction: disguise.heatReduction,
+          };
+        }
       }
+
+      disguiseCursor = continueCursor ?? null;
+      disguisesDone = isDone;
     }
 
     let processedCount = 0;
 
-    for (const agent of agents) {
-      if (agent.heat > 0) {
-        // Determine base decay rate based on status
-        let decayRate =
-          agent.status === "idle" || agent.status === "jailed" || agent.status === "hospitalized"
-            ? heatDecayIdle
-            : heatDecayBusy;
+    let agentCursor: string | null = null;
+    let agentsDone = false;
+    while (!agentsDone) {
+      const { page, isDone, continueCursor } = await ctx.db
+        .query("agents")
+        .paginate({ numItems: 200, cursor: agentCursor });
 
-        // Add disguise bonus if active
-        const disguise = disguiseByAgentId[agent._id.toString()];
-        if (disguise) {
-          decayRate += disguise.heatReduction;
-        }
+      for (const agent of page) {
+        if (agent.heat > 0) {
+          // Determine base decay rate based on status
+          let decayRate =
+            agent.status === "idle" ||
+            agent.status === "jailed" ||
+            agent.status === "hospitalized"
+              ? heatDecayIdle
+              : heatDecayBusy;
 
-        // Apply decay (minimum 0)
-        const newHeat = Math.max(0, agent.heat - decayRate);
+          // Add disguise bonus if active
+          const disguise = disguiseByAgentId[agent._id.toString()];
+          if (disguise) {
+            decayRate += disguise.heatReduction;
+          }
 
-        if (newHeat !== agent.heat) {
-          await ctx.db.patch(agent._id, {
-            heat: newHeat,
-          });
-          processedCount++;
+          // Apply decay (minimum 0)
+          const newHeat = Math.max(0, agent.heat - decayRate);
+
+          if (newHeat !== agent.heat) {
+            await ctx.db.patch(agent._id, {
+              heat: newHeat,
+            });
+            processedCount++;
+          }
         }
       }
+
+      agentCursor = continueCursor ?? null;
+      agentsDone = isDone;
     }
 
     return { processed: processedCount };
@@ -1588,21 +1634,29 @@ export const processDaySurvived = internalMutation({
       return { incremented: 0 };
     }
 
-    // Get all agents (dead agents would be removed or marked differently)
-    const agents = await ctx.db.query("agents").collect();
-
     let incremented = 0;
 
-    for (const agent of agents) {
-      // Increment daysSurvived for all living agents
-      // (even jailed/hospitalized agents are still "surviving")
-      await ctx.db.patch(agent._id, {
-        stats: {
-          ...agent.stats,
-          daysSurvived: agent.stats.daysSurvived + 1,
-        },
-      });
-      incremented++;
+    let cursor: string | null = null;
+    let isDone = false;
+    while (!isDone) {
+      const { page, isDone: done, continueCursor } = await ctx.db
+        .query("agents")
+        .paginate({ numItems: 200, cursor });
+
+      for (const agent of page) {
+        // Increment daysSurvived for all living agents
+        // (even jailed/hospitalized agents are still "surviving")
+        await ctx.db.patch(agent._id, {
+          stats: {
+            ...agent.stats,
+            daysSurvived: agent.stats.daysSurvived + 1,
+          },
+        });
+        incremented++;
+      }
+
+      cursor = continueCursor ?? null;
+      isDone = done;
     }
 
     return { incremented };
