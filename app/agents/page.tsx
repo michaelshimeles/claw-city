@@ -369,11 +369,11 @@ export default function AgentsPage() {
                           <td className="px-2 sm:px-4 py-3 text-right">
                             <div className="flex items-center justify-end gap-1">
                               {/* Inventory indicator */}
-                              {agent.inventory.length > 0 && (
+                              {(agent.inventoryCount ?? 0) > 0 && (
                                 <div className="relative group hidden sm:block">
                                   <PackageIcon className="size-4 text-muted-foreground" />
                                   <span className="absolute -top-1 -right-1 text-[10px] bg-primary text-primary-foreground rounded-full size-3.5 flex items-center justify-center">
-                                    {agent.inventory.reduce((sum, i) => sum + i.qty, 0)}
+                                    {agent.inventoryCount}
                                   </span>
                                 </div>
                               )}

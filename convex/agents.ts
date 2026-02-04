@@ -124,17 +124,18 @@ export const listAgents = query({
       },
       socialStats: {
         giftsGiven: s.giftsGiven ?? 0,
+        betrayals: s.betrayals ?? 0,
       },
       taxOwed: s.taxOwed,
       bannedAt: s.bannedAt,
-      // Fields not in summaries - provide defaults for frontend compatibility
-      inventory: [] as { itemId: string; qty: number }[],
-      stamina: 100,
-      maxStamina: 100,
+      // Use real values from summaries (populated during refresh)
+      inventoryCount: s.inventoryCount ?? 0,
+      stamina: s.stamina ?? 100,
+      maxStamina: s.maxStamina ?? 100,
       busyUntilTick: null,
       currentAction: null,
-      busyAction: null,
-      skills: {
+      busyAction: s.busyAction ?? null,
+      skills: s.skills ?? {
         combat: 1,
         stealth: 1,
         negotiation: 1,

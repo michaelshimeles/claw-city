@@ -35,9 +35,24 @@ export const getZones = query({
       .collect();
     const businesses = await ctx.db.query("businesses").collect();
 
+    // Single query for all agent summaries, then group by zone in memory
+    // This avoids N+1 queries (one per zone)
+    const allSummaries = await ctx.db
+      .query("agentSummaries")
+      .withIndex("by_status") // Use any index to avoid full scan
+      .take(5000); // Bounded query to avoid byte limit
+
     // Build counts per zone
+    const agentCountByZone: Record<string, number> = {};
     const jobCountByZone: Record<string, number> = {};
     const businessCountByZone: Record<string, number> = {};
+
+    for (const summary of allSummaries) {
+      if (!summary.bannedAt && summary.locationZoneId) {
+        const zoneId = summary.locationZoneId.toString();
+        agentCountByZone[zoneId] = (agentCountByZone[zoneId] || 0) + 1;
+      }
+    }
 
     for (const job of jobs) {
       const zoneId = job.zoneId.toString();
@@ -49,29 +64,16 @@ export const getZones = query({
       businessCountByZone[zoneId] = (businessCountByZone[zoneId] || 0) + 1;
     }
 
-    // Get agent counts per zone using indexed queries (avoids loading all summaries)
-    const zonesWithCounts = await Promise.all(
-      zones.map(async (zone) => {
-        const agentsInZone = await ctx.db
-          .query("agentSummaries")
-          .withIndex("by_locationZoneId", (q) => q.eq("locationZoneId", zone._id))
-          .filter((q) => q.eq(q.field("bannedAt"), undefined))
-          .collect();
-
-        return {
-          _id: zone._id,
-          slug: zone.slug,
-          name: zone.name,
-          type: zone.type,
-          description: zone.description,
-          agentCount: agentsInZone.length,
-          jobCount: jobCountByZone[zone._id.toString()] || 0,
-          businessCount: businessCountByZone[zone._id.toString()] || 0,
-        };
-      })
-    );
-
-    return zonesWithCounts;
+    return zones.map((zone) => ({
+      _id: zone._id,
+      slug: zone.slug,
+      name: zone.name,
+      type: zone.type,
+      description: zone.description,
+      agentCount: agentCountByZone[zone._id.toString()] || 0,
+      jobCount: jobCountByZone[zone._id.toString()] || 0,
+      businessCount: businessCountByZone[zone._id.toString()] || 0,
+    }));
   },
 });
 

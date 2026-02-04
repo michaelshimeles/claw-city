@@ -221,23 +221,21 @@ export const getSocialNetwork = query({
 export const getBetrayers = query({
   args: {},
   handler: async (ctx) => {
-    // Use agentSummaries to avoid OCC and byte limit issues
-    // Note: betrayals not in summaries, so we return agents with low reputation as proxy
+    // Use agentSummaries with betrayals index for efficient leaderboard query
     const summaries = await ctx.db
       .query("agentSummaries")
-      .withIndex("by_cash") // Just need any index to iterate
-      .take(500);
+      .withIndex("by_betrayals")
+      .order("desc")
+      .take(200);
 
-    // For now return empty - betrayals tracking needs to be added to summaries
-    // or a separate leaderboard table
+    // Filter to only agents with betrayals and not banned
     return summaries
-      .filter((s) => !s.bannedAt)
-      .sort((a, b) => a.reputation - b.reputation) // Lowest reputation first
+      .filter((s) => !s.bannedAt && (s.betrayals ?? 0) > 0)
       .slice(0, 50)
       .map((s) => ({
         _id: s.agentId,
         name: s.name,
-        betrayals: 0, // Not tracked in summaries yet
+        betrayals: s.betrayals ?? 0,
         reputation: s.reputation,
         status: s.status,
         gangBanUntilTick: null,

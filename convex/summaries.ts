@@ -327,6 +327,13 @@ export const refreshAgentSummaries = internalMutation({
         giftsGiven: agent.socialStats?.giftsGiven ?? 0,
         taxOwed: agent.taxOwed,
         bannedAt: agent.bannedAt,
+        // New fields for frontend compatibility
+        stamina: agent.stamina,
+        maxStamina: 100,
+        busyAction: agent.busyAction ?? undefined,
+        inventoryCount: agent.inventory?.reduce((sum, i) => sum + i.qty, 0) ?? 0,
+        betrayals: agent.socialStats?.betrayals ?? 0,
+        skills: agent.skills,
       };
       if (existing) {
         await ctx.db.patch(existing._id, payload);
@@ -568,6 +575,13 @@ export const backfillAgentSummaries = internalMutation({
         giftsGiven: agent.socialStats?.giftsGiven ?? 0,
         taxOwed: agent.taxOwed,
         bannedAt: agent.bannedAt,
+        // New fields for frontend compatibility
+        stamina: agent.stamina,
+        maxStamina: 100,
+        busyAction: agent.busyAction ?? undefined,
+        inventoryCount: agent.inventory?.reduce((sum, i) => sum + i.qty, 0) ?? 0,
+        betrayals: agent.socialStats?.betrayals ?? 0,
+        skills: agent.skills,
       };
       if (existing) {
         await ctx.db.patch(existing._id, payload);

@@ -285,6 +285,20 @@ export default defineSchema({
     giftsGiven: v.optional(v.number()),
     taxOwed: v.optional(v.number()),
     bannedAt: v.optional(v.number()),
+    // New fields for frontend compatibility
+    stamina: v.optional(v.number()),
+    maxStamina: v.optional(v.number()),
+    busyAction: v.optional(v.string()),
+    inventoryCount: v.optional(v.number()),
+    betrayals: v.optional(v.number()),
+    skills: v.optional(
+      v.object({
+        combat: v.number(),
+        stealth: v.number(),
+        negotiation: v.number(),
+        driving: v.number(),
+      })
+    ),
   })
     .index("by_agentId", ["agentId"])
     .index("by_status", ["status"])
@@ -295,7 +309,8 @@ export default defineSchema({
     .index("by_totalArrests", ["totalArrests"])
     .index("by_daysSurvived", ["daysSurvived"])
     .index("by_giftsGiven", ["giftsGiven"])
-    .index("by_locationZoneId", ["locationZoneId"]),
+    .index("by_locationZoneId", ["locationZoneId"])
+    .index("by_betrayals", ["betrayals"]),
 
   gangSummaries: defineTable({
     gangId: v.id("gangs"),
