@@ -389,6 +389,7 @@ export const refreshSummaries = internalMutation({
       const description = formatEventDescription(event.type, agentName, zoneName, event.payload);
       const drama = formatDramaDescription(event.type, agentName, zoneName, event.payload);
 
+      const eventPayload = event.payload as Record<string, unknown> | null;
       const payload = {
         eventId: event._id,
         type: event.type,
@@ -399,16 +400,25 @@ export const refreshSummaries = internalMutation({
         zoneId: event.zoneId ?? null,
         zoneName: zoneName ?? undefined,
         targetAgentId:
-          typeof (event.payload as any)?.targetAgentId === "string"
-            ? (event.payload as any)?.targetAgentId
-            : undefined,
+          typeof eventPayload?.targetAgentId === "string"
+            ? eventPayload.targetAgentId
+            : null,
         category,
         description,
         dramaDescription: drama.description,
         dramaLevel: drama.dramaLevel,
         amount:
-          typeof (event.payload as any)?.amount === "number"
-            ? (event.payload as any)?.amount
+          typeof eventPayload?.amount === "number"
+            ? eventPayload.amount
+            : undefined,
+        // Payload fields needed by frontend components (RapSheet, AgentTimeline)
+        crimeType:
+          typeof eventPayload?.crimeType === "string"
+            ? eventPayload.crimeType
+            : undefined,
+        loot:
+          typeof eventPayload?.loot === "number"
+            ? eventPayload.loot
             : undefined,
       };
 
@@ -536,6 +546,7 @@ export const backfillSummariesBatch = internalMutation({
       const description = formatEventDescription(event.type, agentName, zoneName, event.payload);
       const drama = formatDramaDescription(event.type, agentName, zoneName, event.payload);
 
+      const eventPayload = event.payload as Record<string, unknown> | null;
       const payload = {
         eventId: event._id,
         type: event.type,
@@ -546,16 +557,25 @@ export const backfillSummariesBatch = internalMutation({
         zoneId: event.zoneId ?? null,
         zoneName: zoneName ?? undefined,
         targetAgentId:
-          typeof (event.payload as any)?.targetAgentId === "string"
-            ? (event.payload as any)?.targetAgentId
-            : undefined,
+          typeof eventPayload?.targetAgentId === "string"
+            ? eventPayload.targetAgentId
+            : null,
         category,
         description,
         dramaDescription: drama.description,
         dramaLevel: drama.dramaLevel,
         amount:
-          typeof (event.payload as any)?.amount === "number"
-            ? (event.payload as any)?.amount
+          typeof eventPayload?.amount === "number"
+            ? eventPayload.amount
+            : undefined,
+        // Payload fields needed by frontend components (RapSheet, AgentTimeline)
+        crimeType:
+          typeof eventPayload?.crimeType === "string"
+            ? eventPayload.crimeType
+            : undefined,
+        loot:
+          typeof eventPayload?.loot === "number"
+            ? eventPayload.loot
             : undefined,
       };
 

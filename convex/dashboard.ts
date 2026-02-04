@@ -213,7 +213,12 @@ export const getRecentEventsWithDetails = query({
       tick: event.tick,
       timestamp: event.timestamp,
       agentName: event.agentName ?? null,
-      payload: null,
+      // Reconstruct payload from summary fields for frontend compatibility
+      payload: {
+        crimeType: event.crimeType ?? null,
+        loot: event.loot ?? null,
+        amount: event.amount ?? null,
+      },
     }));
 
     // Sort by tick descending for consistent ordering
@@ -291,7 +296,12 @@ export const getRecentActivityFeed = query({
         zoneId: event.zoneId,
         zoneName,
         description,
-        payload: null,
+        // Reconstruct payload from summary fields for frontend compatibility
+        payload: {
+          crimeType: event.crimeType ?? null,
+          loot: event.loot ?? null,
+          amount: event.amount ?? null,
+        },
         isSuccess,
         isFailure,
       };
@@ -626,7 +636,12 @@ export const getDramaEvents = query({
       zoneName: event.zoneName ?? "somewhere",
       description: event.dramaDescription ?? event.description,
       dramaLevel: (event.dramaLevel as "normal" | "exciting" | "critical") ?? "normal",
-      payload: null,
+      // Reconstruct payload from summary fields for frontend compatibility
+      payload: {
+        crimeType: event.crimeType ?? null,
+        loot: event.loot ?? null,
+        amount: event.amount ?? null,
+      },
     }));
   },
 });
@@ -762,7 +777,12 @@ export const getFollowedAgentEvents = query({
       zoneName: event.zoneName ?? "somewhere",
       description: event.dramaDescription ?? event.description,
       dramaLevel: (event.dramaLevel as "normal" | "exciting" | "critical") ?? "normal",
-      payload: null,
+      // Reconstruct payload from summary fields for frontend compatibility
+      payload: {
+        crimeType: event.crimeType ?? null,
+        loot: event.loot ?? null,
+        amount: event.amount ?? null,
+      },
     }));
   },
 });

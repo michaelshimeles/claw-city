@@ -319,12 +319,15 @@ export default defineSchema({
     agentName: v.optional(v.string()),
     zoneId: v.union(v.id("zones"), v.null()),
     zoneName: v.optional(v.string()),
-    targetAgentId: v.optional(v.string()),
+    targetAgentId: v.union(v.string(), v.null()),
     category: v.string(),
     description: v.string(),
     dramaDescription: v.optional(v.string()),
     dramaLevel: v.optional(v.string()),
     amount: v.optional(v.number()),
+    // Payload fields needed by frontend components (RapSheet, AgentTimeline)
+    crimeType: v.optional(v.string()),
+    loot: v.optional(v.number()),
   })
     .index("by_eventId", ["eventId"])
     .index("by_tick", ["tick"])

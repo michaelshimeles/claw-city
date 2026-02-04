@@ -36,6 +36,7 @@ import type * as messages from "../messages.js";
 import type * as seed from "../seed.js";
 import type * as skillDocs from "../skillDocs.js";
 import type * as social from "../social.js";
+import type * as summaries from "../summaries.js";
 import type * as tickHelpers from "../tickHelpers.js";
 import type * as tickRunner from "../tickRunner.js";
 import type * as world from "../world.js";
@@ -76,6 +77,7 @@ declare const fullApi: ApiFromModules<{
   seed: typeof seed;
   skillDocs: typeof skillDocs;
   social: typeof social;
+  summaries: typeof summaries;
   tickHelpers: typeof tickHelpers;
   tickRunner: typeof tickRunner;
   world: typeof world;
